@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Agenda Personnel</string>
+    <string name="title_activity_main">Agenda Personnel</string>
+    <string name="package_name">com.riadh.agenda</string>
+    <string name="custom_url_scheme">com.riadh.agenda</string>
+</resources>
