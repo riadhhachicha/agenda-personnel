@@ -767,32 +767,53 @@ button, input, textarea, select {
   display: none;
 }
 
-.type-radio-label[data-type="task"]:hover, 
-.type-radio-label[data-type="task"].selected {
-  background: var(--color-task);
-  color: var(--color-task-text);
-  border-color: transparent;
+.type-radio-label[data-type="achats_divers"]:hover, 
+.type-radio-label[data-type="achats_divers"].selected {
+  background: #E0E7FF;
+  color: #3730A3;
+  border-color: #818CF8;
 }
 
-.type-radio-label[data-type="appointment"]:hover, 
-.type-radio-label[data-type="appointment"].selected {
-  background: var(--color-appointment);
-  color: var(--color-appointment-text);
-  border-color: transparent;
+.type-radio-label[data-type="achats_mp"]:hover, 
+.type-radio-label[data-type="achats_mp"].selected {
+  background: #D1FAE5;
+  color: #065F46;
+  border-color: #34D399;
 }
 
-.type-radio-label[data-type="event"]:hover, 
-.type-radio-label[data-type="event"].selected {
-  background: var(--color-event);
-  color: var(--color-event-text);
-  border-color: transparent;
+.type-radio-label[data-type="client"]:hover, 
+.type-radio-label[data-type="client"].selected {
+  background: #FEF3C7;
+  color: #92400E;
+  border-color: #F59E0B;
+}
+
+.type-radio-label[data-type="rendezvous"]:hover, 
+.type-radio-label[data-type="rendezvous"].selected {
+  background: #FCE7F3;
+  color: #9D174D;
+  border-color: #EC4899;
+}
+
+.type-radio-label[data-type="tache_administrative"]:hover, 
+.type-radio-label[data-type="tache_administrative"].selected {
+  background: #F3F4F6;
+  color: #374151;
+  border-color: #9CA3AF;
+}
+
+.type-radio-label[data-type="tache_usine"]:hover, 
+.type-radio-label[data-type="tache_usine"].selected {
+  background: #CFFAFE;
+  color: #0891B2;
+  border-color: #22D3EE;
 }
 
 .type-radio-label[data-type="call"]:hover, 
 .type-radio-label[data-type="call"].selected {
-  background: var(--color-call);
-  color: var(--color-call-text);
-  border-color: transparent;
+  background: #FFE4E6;
+  color: #9F1239;
+  border-color: #F43F5E;
 }
 
 /* Toggle Switch */
