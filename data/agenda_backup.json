@@ -1,8 +1,8 @@
 {
   "version": "1.0",
-  "exported_at": "2026-06-17T21:44:53.725Z",
+  "exported_at": "2026-06-17T21:45:58.402Z",
   "exported_by": "Mon Agenda Personnel",
-  "count": 12,
+  "count": 11,
   "items": [
     {
       "type": "call",
@@ -86,26 +86,6 @@
     },
     {
       "type": "call",
-      "title": "WISSEM SAMSAR",
-      "description": "",
-      "date": "2026-06-17",
-      "start_time": "06:30",
-      "end_time": "19:30",
-      "priority": "normal",
-      "status": "todo",
-      "reminder_active": false,
-      "reminder_time": null,
-      "contact_name": "",
-      "phone_number": "",
-      "notes": "",
-      "google_calendar_id": "",
-      "google_calendar_link": "",
-      "id": "196759d7-7cb7-49a3-8263-52683f8305fb",
-      "updated_at": "2026-06-17T21:44:53.477Z",
-      "created_at": "2026-06-16T20:47:53.193Z"
-    },
-    {
-      "type": "call",
       "title": "VIREMENT AZUR PACK",
       "description": "",
       "date": "2026-06-17",
@@ -172,7 +152,7 @@
       "description": "GBFGS",
       "end_time": "05:45",
       "priority": "normal",
-      "status": "todo",
+      "status": "completed",
       "reminder_active": false,
       "reminder_time": null,
       "contact_name": null,
@@ -181,7 +161,7 @@
       "google_calendar_id": "",
       "google_calendar_link": "",
       "id": "a1a6a857-99d8-41eb-81b3-eb74c31c060b",
-      "updated_at": "2026-06-17T21:44:01.116Z",
+      "updated_at": "2026-06-17T21:45:58.021Z",
       "created_at": "2026-06-17T21:27:10.777Z"
     },
     {
