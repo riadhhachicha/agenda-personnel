@@ -6,12 +6,18 @@ let isSupabaseConfigured = false
 
 // Initial default settings
 const DEFAULT_COLORS = {
-  task: '#E0E7FF',
-  task_text: '#4338CA',
-  appointment: '#D1FAE5',
-  appointment_text: '#065F46',
-  event: '#FEF3C7',
-  event_text: '#92400E',
+  achats_divers: '#E0E7FF',
+  achats_divers_text: '#3730A3',
+  achats_mp: '#D1FAE5',
+  achats_mp_text: '#065F46',
+  client: '#FEF3C7',
+  client_text: '#92400E',
+  rendezvous: '#FCE7F3',
+  rendezvous_text: '#9D174D',
+  tache_administrative: '#F3F4F6',
+  tache_administrative_text: '#374151',
+  tache_usine: '#CFFAFE',
+  tache_usine_text: '#0891B2',
   call: '#FFE4E6',
   call_text: '#9F1239'
 }
