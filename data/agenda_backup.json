@@ -1,8 +1,8 @@
 {
   "version": "1.0",
-  "exported_at": "2026-06-17T21:43:51.796Z",
+  "exported_at": "2026-06-17T21:44:53.725Z",
   "exported_by": "Mon Agenda Personnel",
-  "count": 11,
+  "count": 12,
   "items": [
     {
       "type": "call",
@@ -89,8 +89,8 @@
       "title": "WISSEM SAMSAR",
       "description": "",
       "date": "2026-06-17",
-      "start_time": "10:00",
-      "end_time": "23:00",
+      "start_time": "06:30",
+      "end_time": "19:30",
       "priority": "normal",
       "status": "todo",
       "reminder_active": false,
@@ -101,7 +101,7 @@
       "google_calendar_id": "",
       "google_calendar_link": "",
       "id": "196759d7-7cb7-49a3-8263-52683f8305fb",
-      "updated_at": "2026-06-16T20:47:54.933Z",
+      "updated_at": "2026-06-17T21:44:53.477Z",
       "created_at": "2026-06-16T20:47:53.193Z"
     },
     {
@@ -170,7 +170,7 @@
       "date": "2026-06-17",
       "title": "FSGBDFB",
       "description": "GBFGS",
-      "end_time": "06:15",
+      "end_time": "05:45",
       "priority": "normal",
       "status": "todo",
       "reminder_active": false,
@@ -181,16 +181,16 @@
       "google_calendar_id": "",
       "google_calendar_link": "",
       "id": "a1a6a857-99d8-41eb-81b3-eb74c31c060b",
-      "updated_at": "2026-06-17T21:43:51.406Z",
+      "updated_at": "2026-06-17T21:44:01.116Z",
       "created_at": "2026-06-17T21:27:10.777Z"
     },
     {
       "type": "call",
-      "start_time": "06:15",
+      "start_time": "06:30",
       "date": "2026-06-17",
       "title": "FHRFVJ",
       "description": "",
-      "end_time": "07:45",
+      "end_time": "08:00",
       "priority": "normal",
       "status": "todo",
       "reminder_active": false,
@@ -201,7 +201,7 @@
       "google_calendar_id": "",
       "google_calendar_link": "",
       "id": "aca53739-2d89-4e9a-8c57-330c2658f2fc",
-      "updated_at": "2026-06-17T21:37:37.115Z",
+      "updated_at": "2026-06-17T21:44:44.204Z",
       "created_at": "2026-06-17T21:33:26.406Z"
     },
     {
@@ -223,6 +223,23 @@
       "id": "cc849275-2807-48e3-baaa-23f49ccc3fbc",
       "updated_at": "2026-06-17T21:36:27.433Z",
       "created_at": "2026-06-17T21:36:12.685Z"
+    },
+    {
+      "type": "call",
+      "title": "YTGIYUIYU",
+      "description": "",
+      "date": "2026-06-17",
+      "start_time": "05:00",
+      "end_time": "06:15",
+      "priority": "normal",
+      "status": "todo",
+      "reminder_active": false,
+      "contact_name": "TFKJGHKGHJ",
+      "phone_number": "365465",
+      "notes": "",
+      "id": "1ca527e5-198c-4d15-a950-5cd45771ffb6",
+      "updated_at": "2026-06-17T21:44:47.244Z",
+      "created_at": "2026-06-17T21:44:38.501Z"
     }
   ]
 }
