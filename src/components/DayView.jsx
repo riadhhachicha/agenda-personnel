@@ -18,6 +18,12 @@ const timeToMinutes = (timeStr) => {
   return h * 60 + m
 }
 
+const minutesToTime = (min) => {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 const formatLocalDate = (date) => {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -42,11 +48,13 @@ export default function DayView({
   onAddItem,
   onEditItem,
   onToggleComplete,
+  onUpdateItemTime,
   isMobile
 }) {
   const timelineRef = useRef(null)
   const dateStr = formatLocalDate(activeDate)
   const isToday = dateStr === formatLocalDate(new Date())
+  const [tempItemUpdates, setTempItemUpdates] = useState(null)
 
   // Scroll to current time on mount
   useEffect(() => {
@@ -80,9 +88,105 @@ export default function DayView({
   const nowTop = ((nowMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT
   const showNowLine = isToday && now.getHours() >= HOUR_START && now.getHours() <= HOUR_END
 
+  const handleDragStart = (e, item, actionType) => {
+    if (e.button !== undefined && e.button !== 0) return
+    
+    e.stopPropagation()
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    
+    const startMin = timeToMinutes(item.start_time)
+    const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 60
+    const duration = endMin - startMin
+
+    let hasMoved = false
+
+    const dragSession = {
+      itemId: item.id,
+      actionType,
+      initialClientY: clientY,
+      initialStartMin: startMin,
+      initialEndMin: endMin,
+      initialDuration: duration,
+      item
+    }
+
+    const handleMove = (moveEvent) => {
+      const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY
+      const deltaY = currentY - dragSession.initialClientY
+
+      if (Math.abs(deltaY) > 5) {
+        hasMoved = true
+      }
+
+      const deltaMin = (deltaY / HOUR_HEIGHT) * 60
+
+      if (dragSession.actionType === 'drag') {
+        const rawStart = dragSession.initialStartMin + deltaMin
+        let newStart = Math.round(rawStart / 15) * 15
+        const minAllowed = HOUR_START * 60
+        const maxAllowed = HOUR_END * 60 - dragSession.initialDuration
+        newStart = Math.max(minAllowed, Math.min(maxAllowed, newStart))
+        const newEnd = newStart + dragSession.initialDuration
+
+        setTempItemUpdates({
+          id: dragSession.itemId,
+          start_time: minutesToTime(newStart),
+          end_time: minutesToTime(newEnd)
+        })
+      } else if (dragSession.actionType === 'resize') {
+        const rawDuration = dragSession.initialDuration + deltaMin
+        let newDuration = Math.round(rawDuration / 15) * 15
+        newDuration = Math.max(30, newDuration)
+        const maxDuration = HOUR_END * 60 - dragSession.initialStartMin
+        newDuration = Math.min(maxDuration, newDuration)
+        const newEnd = dragSession.initialStartMin + newDuration
+
+        setTempItemUpdates({
+          id: dragSession.itemId,
+          start_time: minutesToTime(dragSession.initialStartMin),
+          end_time: minutesToTime(newEnd)
+        })
+      }
+    }
+
+    const handleEnd = async () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleEnd)
+      window.removeEventListener('touchmove', handleMove)
+      window.removeEventListener('touchend', handleEnd)
+
+      if (!hasMoved) {
+        onEditItem(item)
+      } else if (dragSession.itemId) {
+        setTempItemUpdates(temp => {
+          if (temp && temp.id === dragSession.itemId) {
+            onUpdateItemTime(dragSession.item, temp.start_time, temp.end_time)
+          }
+          return null
+        })
+      }
+    }
+
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleEnd)
+    window.addEventListener('touchmove', handleMove, { passive: false })
+    window.addEventListener('touchend', handleEnd)
+  }
+
   // Compute item layout (top, height, column for overlapping)
   const computeLayout = (items) => {
-    const sorted = [...items].sort((a, b) => 
+    const mapped = items.map(item => {
+      if (tempItemUpdates && tempItemUpdates.id === item.id) {
+        return {
+          ...item,
+          start_time: tempItemUpdates.start_time,
+          end_time: tempItemUpdates.end_time
+        }
+      }
+      return item
+    })
+
+    const sorted = [...mapped].sort((a, b) => 
       timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
     )
 
@@ -252,10 +356,12 @@ export default function DayView({
               const colLeft = `calc((100% - 4px) / ${totalCols} * ${col})`
               const isShort = height < 48
 
+              const isDragging = tempItemUpdates && tempItemUpdates.id === item.id
+
               return (
                 <div
                   key={item.id}
-                  className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''}`}
+                  className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''} ${isDragging ? 'dragging' : ''}`}
                   style={{
                     top: top + 'px',
                     height: height + 'px',
@@ -265,7 +371,8 @@ export default function DayView({
                     color: text,
                     borderLeft: `3px solid ${text}`,
                   }}
-                  onClick={() => onEditItem(item)}
+                  onMouseDown={(e) => handleDragStart(e, item, 'drag')}
+                  onTouchStart={(e) => handleDragStart(e, item, 'drag')}
                   title={`${item.start_time}${item.end_time ? ' – ' + item.end_time : ''} · ${item.title}`}
                 >
                   <div className="day-event-header">
@@ -298,6 +405,13 @@ export default function DayView({
                   {item.priority === 'urgent' && !isCompleted && (
                     <div className="day-event-urgent"><AlertCircle size={10} /> Urgent</div>
                   )}
+                  
+                  {/* Resize handle at the bottom */}
+                  <div
+                    className="day-event-resize-handle"
+                    onMouseDown={(e) => handleDragStart(e, item, 'resize')}
+                    onTouchStart={(e) => handleDragStart(e, item, 'resize')}
+                  />
                 </div>
               )
             })}

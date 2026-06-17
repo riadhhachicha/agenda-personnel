@@ -292,6 +292,27 @@ export default function App() {
     }
   }
 
+  const handleUpdateItemTime = async (item, startTime, endTime) => {
+    const updated = {
+      ...item,
+      start_time: startTime,
+      end_time: endTime
+    }
+    await saveItem(updated)
+    const refreshed = await getItems()
+    setItems(refreshed)
+
+    if (googleStatus.connected && (updated.type === 'appointment' || updated.type === 'event')) {
+      try {
+        await exportItemToGoogle(updated, googleConfig.clientId, googleConfig.apiKey)
+        const finalRefreshed = await getItems()
+        setItems(finalRefreshed)
+      } catch (e) {
+        console.error('Auto google sync updated time failed', e)
+      }
+    }
+  }
+
   // ==========================================
   // COLOR ACTIONS
   // ==========================================
@@ -484,6 +505,7 @@ export default function App() {
               setShowFormModal(true)
             }}
             onToggleComplete={handleToggleComplete}
+            onUpdateItemTime={handleUpdateItemTime}
             isMobile={isMobile}
           />
         )}
