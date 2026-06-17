@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 
 // Timeline range
-const HOUR_START = 6   // 06:00
-const HOUR_END   = 23  // 23:00
+const HOUR_START = 5   // 05:00
+const HOUR_END   = 22  // 22:00
 const HOUR_HEIGHT = 72 // px per hour
 
 const HOURS = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i)
