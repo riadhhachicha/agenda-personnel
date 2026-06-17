@@ -1,8 +1,8 @@
 {
   "version": "1.0",
-  "exported_at": "2026-06-17T21:45:58.402Z",
+  "exported_at": "2026-06-17T21:47:33.421Z",
   "exported_by": "Mon Agenda Personnel",
-  "count": 11,
+  "count": 12,
   "items": [
     {
       "type": "call",
@@ -220,6 +220,23 @@
       "id": "1ca527e5-198c-4d15-a950-5cd45771ffb6",
       "updated_at": "2026-06-17T21:44:47.244Z",
       "created_at": "2026-06-17T21:44:38.501Z"
+    },
+    {
+      "type": "achats_mp",
+      "title": "SFGNFNFGN",
+      "description": "GFN?FH?NFGHN?FH?HF?HF?HGFFGNGFNGFNGNGFNFNFDNFN",
+      "date": "2026-06-17",
+      "start_time": "05:30",
+      "end_time": "06:00",
+      "priority": "low",
+      "status": "in_progress",
+      "reminder_active": false,
+      "contact_name": "",
+      "phone_number": "",
+      "notes": "",
+      "id": "84547a9b-e7b2-4675-847a-e66f1b3a0068",
+      "updated_at": "2026-06-17T21:47:33.015Z",
+      "created_at": "2026-06-17T21:47:33.015Z"
     }
   ]
 }
