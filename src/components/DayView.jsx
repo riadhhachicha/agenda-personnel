@@ -5,6 +5,7 @@ import {
   CheckCircle2, Plus, Clock, AlertCircle,
   ShoppingCart, Package, Users, FileText, Factory
 } from 'lucide-react'
+import ContactAutocomplete from './ContactAutocomplete'
 
 // Defined categories for the multi-column board view
 const CATEGORIES = [
@@ -64,12 +65,39 @@ export default function DayView({
   onEditItem,
   onToggleComplete,
   onUpdateItemTime,
-  isMobile
+  isMobile,
+  onSave,
+  onDelete,
+  googleConnected
 }) {
   const timelineRef = useRef(null)
   const dateStr = formatLocalDate(activeDate)
   const isToday = dateStr === formatLocalDate(new Date())
   const [tempItemUpdates, setTempItemUpdates] = useState(null)
+  const [popover, setPopover] = useState(null)
+  const popoverRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (popover && popoverRef.current && !popoverRef.current.contains(e.target)) {
+        if (e.target.closest('.day-view-board-column') || e.target.closest('.day-event-block') || e.target.closest('.modal-overlay')) {
+          return
+        }
+        setPopover(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [popover])
+
+  const handlePopoverSave = () => {
+    if (!popover.item.title.trim()) {
+      alert('Veuillez entrer un titre.')
+      return
+    }
+    onSave(popover.item)
+    setPopover(null)
+  }
 
   // Scroll to current time on mount
   useEffect(() => {
@@ -185,7 +213,17 @@ export default function DayView({
       window.removeEventListener('touchend', handleEnd)
 
       if (!hasMoved) {
-        onEditItem(item)
+        const layoutItem = layout.find(l => l.item.id === item.id)
+        const top = layoutItem ? layoutItem.top : 0
+        const catIdx = CATEGORIES.findIndex(cat => cat.id === item.type)
+        
+        setPopover({
+          isNew: false,
+          top,
+          catIdx,
+          catId: item.type,
+          item: { ...item }
+        })
       } else if (dragSession.itemId) {
         setTempItemUpdates(temp => {
           if (temp && temp.id === dragSession.itemId) {
@@ -211,7 +249,35 @@ export default function DayView({
     const snappedMinutes = Math.round(clickedMinutes / 30) * 30
     const clampedMinutes = Math.max(HOUR_START * 60, Math.min(HOUR_END * 60, snappedMinutes))
     const timeStr = minutesToTime(clampedMinutes)
-    onAddItem(dateStr, categoryId, timeStr)
+
+    const top = Math.max(0, ((clampedMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT)
+    const catIdx = CATEGORIES.findIndex(cat => cat.id === categoryId)
+
+    const [h, m] = timeStr.split(':').map(Number)
+    const endM = (m + 30) % 60
+    const endH = (h + Math.floor((m + 30) / 60)) % 24
+    const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+
+    setPopover({
+      isNew: true,
+      top,
+      catIdx,
+      catId: categoryId,
+      item: {
+        type: categoryId,
+        title: '',
+        description: '',
+        date: dateStr,
+        start_time: timeStr,
+        end_time: endTimeStr,
+        priority: 'normal',
+        status: 'todo',
+        reminder_active: false,
+        contact_name: '',
+        phone_number: '',
+        notes: ''
+      }
+    })
   }
 
   // Compute item layout (top, height, column for overlapping)
@@ -431,8 +497,8 @@ export default function DayView({
                       {catLayout.map(({ item, top, height, col, totalCols }) => {
                         const { bg, text } = getColors(item)
                         const isCompleted = item.status === 'completed'
-                        const colWidth = `calc((100% - 4px) / ${totalCols})`
-                        const colLeft = `calc((100% - 4px) / ${totalCols} * ${col})`
+                        const colWidth = `calc(100% / ${totalCols})`
+                        const colLeft = `calc(100% / ${totalCols} * ${col})`
                         const isShort = height < 48
 
                         const isDragging = tempItemUpdates && tempItemUpdates.id === item.id
@@ -508,6 +574,240 @@ export default function DayView({
                     style={{ marginTop: '0.75rem', padding: '0.5rem 1.25rem' }}>
                     <Plus size={15} /> Ajouter un élément
                   </button>
+                </div>
+              )}
+
+              {/* Popover Editor - La cellule saisie au même niveau mais plus large */}
+              {popover && (
+                <div
+                  ref={popoverRef}
+                  className="day-view-popover-editor"
+                  style={{
+                    top: `${Math.max(0, Math.min(popover.top, totalHeight - (popover.item.type === 'call' ? 420 : 360) - 10))}px`,
+                    left: popover.catIdx < 4 
+                      ? `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${popover.catIdx})`
+                      : `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${popover.catIdx + 1} - 340px)`,
+                    '--category-color': (getColors(popover.item).bg)
+                  }}
+                >
+                  {/* Category switcher row */}
+                  <div className="popover-category-row">
+                    {CATEGORIES.map(cat => {
+                      const Icon = cat.icon
+                      const isSelected = popover.item.type === cat.id
+                      const catColors = typeColors[cat.id] || typeColors.rendezvous
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          className={`popover-category-btn ${isSelected ? 'selected' : ''}`}
+                          style={{
+                            backgroundColor: isSelected ? catColors.bg : 'var(--bg-app)',
+                            color: isSelected ? catColors.text : 'var(--text-muted)',
+                            borderColor: isSelected ? catColors.text : 'var(--border-light)'
+                          }}
+                          onClick={() => {
+                            setPopover(prev => ({
+                              ...prev,
+                              catId: cat.id,
+                              catIdx: CATEGORIES.findIndex(c => c.id === cat.id),
+                              item: { ...prev.item, type: cat.id }
+                            }))
+                          }}
+                          title={cat.label}
+                        >
+                          <Icon size={16} />
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Title input */}
+                  <div>
+                    <label className="popover-field-label">Titre *</label>
+                    <input
+                      type="text"
+                      className="form-control compact"
+                      placeholder="Ex: Réunion, Achat..."
+                      value={popover.item.title || ''}
+                      onChange={(e) => setPopover(prev => ({
+                        ...prev,
+                        item: { ...prev.item, title: e.target.value }
+                      }))}
+                      autoFocus
+                      required
+                    />
+                  </div>
+
+                  {/* Date & Time range */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.4rem' }}>
+                    <div>
+                      <label className="popover-field-label">Date</label>
+                      <input
+                        type="date"
+                        className="form-control compact"
+                        value={popover.item.date || ''}
+                        onChange={(e) => setPopover(prev => ({
+                          ...prev,
+                          item: { ...prev.item, date: e.target.value }
+                        }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="popover-field-label">Début</label>
+                      <input
+                        type="time"
+                        className="form-control compact"
+                        value={popover.item.start_time || ''}
+                        onChange={(e) => setPopover(prev => ({
+                          ...prev,
+                          item: { ...prev.item, start_time: e.target.value }
+                        }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="popover-field-label">Fin</label>
+                      <input
+                        type="time"
+                        className="form-control compact"
+                        value={popover.item.end_time || ''}
+                        onChange={(e) => setPopover(prev => ({
+                          ...prev,
+                          item: { ...prev.item, end_time: e.target.value }
+                        }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contact Autocomplete for call category */}
+                  {popover.item.type === 'call' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div>
+                        <label className="popover-field-label">Contact</label>
+                        <ContactAutocomplete
+                          value={popover.item.contact_name}
+                          phoneValue={popover.item.phone_number}
+                          onNameChange={(val) => setPopover(prev => ({
+                            ...prev,
+                            item: { ...prev.item, contact_name: val }
+                          }))}
+                          onPhoneChange={(val) => setPopover(prev => ({
+                            ...prev,
+                            item: { ...prev.item, phone_number: val }
+                          }))}
+                          onContactSelect={({ name, phone }) => {
+                            setPopover(prev => ({
+                              ...prev,
+                              item: { ...prev.item, contact_name: name, phone_number: phone }
+                            }))
+                          }}
+                          googleConnected={googleConnected}
+                        />
+                      </div>
+                      <div>
+                        <label className="popover-field-label">Numéro</label>
+                        <input
+                          type="tel"
+                          className="form-control compact"
+                          placeholder="Ex: +33..."
+                          value={popover.item.phone_number || ''}
+                          onChange={(e) => setPopover(prev => ({
+                            ...prev,
+                            item: { ...prev.item, phone_number: e.target.value }
+                          }))}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Description input */}
+                  <div>
+                    <label className="popover-field-label">Description</label>
+                    <textarea
+                      className="form-control compact"
+                      placeholder="Détails (optionnel)..."
+                      value={popover.item.description || ''}
+                      onChange={(e) => setPopover(prev => ({
+                        ...prev,
+                        item: { ...prev.item, description: e.target.value }
+                      }))}
+                      rows={2}
+                      style={{ resize: 'none' }}
+                    />
+                  </div>
+
+                  {/* Priority & Status */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div>
+                      <label className="popover-field-label">Priorité</label>
+                      <select
+                        className="form-control compact"
+                        value={popover.item.priority || 'normal'}
+                        onChange={(e) => setPopover(prev => ({
+                          ...prev,
+                          item: { ...prev.item, priority: e.target.value }
+                        }))}
+                      >
+                        <option value="low">Basse</option>
+                        <option value="normal">Normale</option>
+                        <option value="urgent">Urgente</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="popover-field-label">Statut</label>
+                      <select
+                        className="form-control compact"
+                        value={popover.item.status || 'todo'}
+                        onChange={(e) => setPopover(prev => ({
+                          ...prev,
+                          item: { ...prev.item, status: e.target.value }
+                        }))}
+                      >
+                        <option value="todo">À faire</option>
+                        <option value="in_progress">En cours</option>
+                        <option value="completed">Terminé</option>
+                        <option value="cancelled">Annulé</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Actions buttons */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem', gap: '0.5rem' }}>
+                    <div>
+                      {!popover.isNew && (
+                        <button
+                          type="button"
+                          className="btn-danger-outline compact-btn"
+                          onClick={() => {
+                            if (window.confirm('Voulez-vous supprimer cet élément ?')) {
+                              onDelete(popover.item.id)
+                              setPopover(null)
+                            }
+                          }}
+                        >
+                          Supprimer
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="btn-secondary compact-btn"
+                        onClick={() => setPopover(null)}
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary compact-btn"
+                        onClick={handlePopoverSave}
+                      >
+                        Enregistrer
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

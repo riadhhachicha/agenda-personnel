@@ -526,6 +526,9 @@ export default function App() {
             onToggleComplete={handleToggleComplete}
             onUpdateItemTime={handleUpdateItemTime}
             isMobile={isMobile}
+            onSave={handleSaveItem}
+            onDelete={handleDeleteItem}
+            googleConnected={googleStatus.connected}
           />
         )}
 
