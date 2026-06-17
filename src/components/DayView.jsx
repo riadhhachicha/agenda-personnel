@@ -108,9 +108,8 @@ export default function DayView({
     
     e.stopPropagation()
     const clientY = e.touches ? e.touches[0].clientY : e.clientY
-    
     const startMin = timeToMinutes(item.start_time)
-    const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 60
+    const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 30
     const duration = endMin - startMin
 
     let hasMoved = false
@@ -240,7 +239,7 @@ export default function DayView({
 
       const placed = sorted.map(item => {
         const startMin = timeToMinutes(item.start_time)
-        const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 60
+        const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 30
         const top = Math.max(0, ((startMin - HOUR_START * 60) / 60) * HOUR_HEIGHT)
         const height = Math.max(36, ((endMin - startMin) / 60) * HOUR_HEIGHT)
         return { item, startMin, endMin, top, height, col: 0, totalCols: 1 }

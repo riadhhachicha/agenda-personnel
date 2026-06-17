@@ -76,7 +76,16 @@ export default function ItemFormModal({
       setDescription(item.description || '')
       setDate(item.date || defaultDate || '')
       setStartTime(item.start_time || '09:00')
-      setEndTime(item.end_time || '')
+      if (item.end_time) {
+        setEndTime(item.end_time)
+      } else if (item.start_time) {
+        const [h, m] = item.start_time.split(':').map(Number)
+        const endM = (m + 30) % 60
+        const endH = (h + Math.floor((m + 30) / 60)) % 24
+        setEndTime(`${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`)
+      } else {
+        setEndTime('')
+      }
       setPriority(item.priority || 'normal')
       setStatus(item.status || 'todo')
       setReminderActive(!!item.reminder_active)
@@ -115,11 +124,13 @@ export default function ItemFormModal({
       const dd = String(today.getDate()).padStart(2, '0')
       setDate(defaultDate || `${yyyy}-${mm}-${dd}`)
       
-      // Default to next nearest hour
+      // Default to next nearest hour (with 30 min duration matching cell grid)
       const now = new Date()
-      const hours = String((now.getHours() + 1) % 24).padStart(2, '0')
-      setStartTime(`${hours}:00`)
-      setEndTime(`${String((now.getHours() + 2) % 24).padStart(2, '0')}:00`)
+      const startH = (now.getHours() + 1) % 24
+      const startStr = `${String(startH).padStart(2, '0')}:00`
+      const endStr = `${String(startH).padStart(2, '0')}:30`
+      setStartTime(startStr)
+      setEndTime(endStr)
       
       setPriority('normal')
       setStatus('todo')
