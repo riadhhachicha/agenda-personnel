@@ -1,17 +1,26 @@
 import React, { useState, useEffect } from 'react'
 import { 
   Calendar, 
-  Database, 
   Key, 
-  User, 
   RefreshCw, 
-  CheckCircle, 
-  XCircle, 
   HelpCircle,
   FileText,
-  AlertTriangle
+  Github,
+  Upload,
+  Shield,
+  Clock,
+  CheckCircle,
+  XCircle
 } from 'lucide-react'
-import { getSupabaseStatus, initSupabase, syncLocalToRemote } from '../db/db'
+import { getItems } from '../db/db'
+import { 
+  getGithubConfig, 
+  saveGithubConfig, 
+  pushToGithub, 
+  verifyGithubPAT, 
+  getLastGithubSync,
+  isGithubConfigured 
+} from '../services/githubSync'
 
 export default function GoogleCalendarSettings({ 
   googleConfig, 
@@ -27,18 +36,20 @@ export default function GoogleCalendarSettings({
   const [apiKey, setApiKey] = useState(googleConfig.apiKey || '')
   const [googleSaved, setGoogleSaved] = useState(false)
 
-  // Supabase config state
-  const [supabaseUrl, setSupabaseUrl] = useState(localStorage.getItem('supabase_url') || '')
-  const [supabaseKey, setSupabaseKey] = useState(localStorage.getItem('supabase_key') || '')
-  const [supabaseSaved, setSupabaseSaved] = useState(false)
-  const [supabaseStatus, setSupabaseStatusState] = useState(getSupabaseStatus())
-  const [syncStatusMsg, setSyncStatusMsg] = useState('')
-  const [syncingDb, setSyncingDb] = useState(false)
+  // GitHub Backup state
+  const githubDefaults = getGithubConfig()
+  const [githubPat, setGithubPat] = useState(githubDefaults.pat)
+  const [githubOwner, setGithubOwner] = useState(githubDefaults.owner || 'riadhhachicha')
+  const [githubRepo, setGithubRepo] = useState(githubDefaults.repo || 'agenda-personnel')
+  const [githubBranch, setGithubBranch] = useState(githubDefaults.branch || 'main')
+  const [githubPath, setGithubPath] = useState(githubDefaults.path || 'data/agenda_backup.json')
+  const [githubAutoSync, setGithubAutoSync] = useState(githubDefaults.autoSync)
+  const [githubStatus, setGithubStatus] = useState({ verified: isGithubConfigured() ? 'saved' : null })
+  const [githubMsg, setGithubMsg] = useState('')
+  const [githubLoading, setGithubLoading] = useState(false)
+  const [lastSync, setLastSync] = useState(getLastGithubSync())
 
-  useEffect(() => {
-    setSupabaseStatusState(getSupabaseStatus())
-  }, [])
-
+  // ─── Google handlers ───────────────────────────────────────────────────────
   const handleSaveGoogle = (e) => {
     e.preventDefault()
     onSaveGoogleConfig({ clientId: clientId.trim(), apiKey: apiKey.trim() })
@@ -46,235 +57,308 @@ export default function GoogleCalendarSettings({
     setTimeout(() => setGoogleSaved(false), 3000)
   }
 
-  const handleSaveSupabase = (e) => {
+  // ─── GitHub Handlers ───────────────────────────────────────────────────────
+  const handleSaveGithub = async (e) => {
     e.preventDefault()
-    const url = supabaseUrl.trim()
-    const key = supabaseKey.trim()
-    
-    if (url && key) {
-      localStorage.setItem('supabase_url', url)
-      localStorage.setItem('supabase_key', key)
-      const success = initSupabase(url, key)
-      if (success) {
-        setSyncStatusMsg('Client Supabase connecté !')
-      } else {
-        setSyncStatusMsg('Erreur d’initialisation Supabase.')
-      }
-    } else {
-      localStorage.removeItem('supabase_url')
-      localStorage.removeItem('supabase_key')
-      initSupabase(null, null)
-      setSyncStatusMsg('Identifiants Supabase supprimés. Mode LocalStorage activé.')
+    if (!githubPat.trim()) {
+      setGithubMsg('⚠️ Le Personal Access Token est requis.')
+      return
+    }
+    setGithubLoading(true)
+    setGithubMsg('Vérification du token GitHub...')
+
+    const result = await verifyGithubPAT(githubPat.trim(), githubOwner.trim(), githubRepo.trim())
+    if (!result.valid) {
+      setGithubMsg(`❌ ${result.error}`)
+      setGithubStatus({ verified: 'error' })
+      setGithubLoading(false)
+      return
     }
 
-    setSupabaseStatusState(getSupabaseStatus())
-    setSupabaseSaved(true)
-    setTimeout(() => {
-      setSupabaseSaved(false)
-      setSyncStatusMsg('')
-    }, 4000)
+    saveGithubConfig({
+      pat: githubPat.trim(),
+      owner: githubOwner.trim(),
+      repo: githubRepo.trim(),
+      branch: githubBranch.trim(),
+      path: githubPath.trim(),
+      autoSync: githubAutoSync
+    })
+    setGithubStatus({ verified: 'ok', repoName: result.repoName })
+    setGithubMsg(`✅ Connexion réussie ! Dépôt : ${result.repoName}`)
+    setGithubLoading(false)
+    setTimeout(() => setGithubMsg(''), 5000)
   }
 
-  const handleSyncLocalData = async () => {
-    setSyncingDb(true)
-    setSyncStatusMsg('Synchronisation des données en cours...')
+  const handleGithubBackupNow = async () => {
+    setGithubLoading(true)
+    setGithubMsg('Sauvegarde en cours...')
     try {
-      const result = await syncLocalToRemote()
-      setSyncStatusMsg(result.message)
-    } catch (error) {
-      setSyncStatusMsg('Erreur de synchronisation : ' + error.message)
+      const items = await getItems()
+      await pushToGithub(items)
+      const ts = getLastGithubSync()
+      setLastSync(ts)
+      setGithubMsg(`✅ ${items.length} éléments sauvegardés sur GitHub.`)
+    } catch (e) {
+      setGithubMsg(`❌ Erreur : ${e.message}`)
     } finally {
-      setSyncingDb(false)
-      setTimeout(() => setSyncStatusMsg(''), 6000)
+      setGithubLoading(false)
+      setTimeout(() => setGithubMsg(''), 6000)
     }
+  }
+
+  const formatLastSync = (isoStr) => {
+    if (!isoStr) return null
+    try {
+      return new Date(isoStr).toLocaleString('fr-FR', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+      })
+    } catch { return isoStr }
   }
 
   const formatLogTime = (isoString) => {
     try {
       return new Date(isoString).toLocaleString('fr-FR', {
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+        day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
       })
-    } catch (e) {
-      return isoString
-    }
+    } catch (e) { return isoString }
   }
+
+  const githubConnected = githubStatus.verified === 'ok' || githubStatus.verified === 'saved'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      {/* GOOGLE CALENDAR CONFIG */}
+
+      {/* ══════════════════════════════════════════════════
+          1. GITHUB SYNC (en premier — c'est la priorité)
+          ══════════════════════════════════════════════════ */}
+      <div className="settings-card" style={{ borderLeft: '3px solid #24292f' }}>
+        <div>
+          <h2 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Github size={20} /> Synchronisation GitHub
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Vos données agenda sont sauvegardées automatiquement dans votre dépôt{' '}
+            <a href="https://github.com/riadhhachicha/agenda-personnel" target="_blank" rel="noopener noreferrer"
+              style={{ color: 'var(--primary)', textDecoration: 'underline', fontWeight: '600' }}>
+              riadhhachicha/agenda-personnel
+            </a>.
+          </p>
+        </div>
+
+        {/* Status indicator */}
+        <div className="sync-status-box">
+          <div className={`status-indicator ${
+            githubConnected ? 'success' : 
+            githubStatus.verified === 'error' ? 'error' : 'warning'
+          }`} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: '600', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {githubConnected 
+                ? <><CheckCircle size={15} style={{ color: '#16a34a' }} /> Connecté — {githubStatus.repoName || `${githubOwner}/${githubRepo}`}</>
+                : githubStatus.verified === 'error' 
+                  ? <><XCircle size={15} style={{ color: '#dc2626' }} /> Erreur de connexion</>
+                  : '⚙️ Non configuré — entrez votre PAT ci-dessous'}
+            </div>
+            {lastSync && (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
+                <Clock size={11} /> Dernière sauvegarde : <strong>{formatLastSync(lastSync)}</strong>
+              </div>
+            )}
+          </div>
+          {githubConnected && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleGithubBackupNow}
+              disabled={githubLoading}
+              style={{ padding: '0.45rem 1rem', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}
+            >
+              <Upload size={14} className={githubLoading ? 'animate-spin' : ''} />
+              Sauvegarder maintenant
+            </button>
+          )}
+        </div>
+
+        {githubMsg && (
+          <div style={{
+            fontSize: '0.85rem', fontWeight: '600',
+            padding: '0.6rem 0.85rem', borderRadius: '10px',
+            background: githubMsg.startsWith('✅') ? '#f0fdf4' : githubMsg.startsWith('❌') ? '#fef2f2' : 'var(--bg-app)',
+            border: `1px solid ${githubMsg.startsWith('✅') ? '#bbf7d0' : githubMsg.startsWith('❌') ? '#fecaca' : 'var(--border-light)'}`,
+            color: githubMsg.startsWith('✅') ? '#15803d' : githubMsg.startsWith('❌') ? '#b91c1c' : 'inherit'
+          }}>
+            {githubMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSaveGithub} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-main)' }}>
+            <Shield size={14} /> Configuration du token GitHub
+          </h3>
+
+          {/* PAT input */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label htmlFor="github-pat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Personal Access Token (PAT) *</span>
+              <a 
+                href="https://github.com/settings/tokens/new?scopes=repo&description=Agenda+Backup" 
+                target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: '0.75rem', color: 'var(--primary)', textDecoration: 'underline' }}
+              >
+                → Créer un token sur GitHub
+              </a>
+            </label>
+            <input
+              id="github-pat"
+              type="password"
+              className="form-control"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={githubPat}
+              onChange={e => setGithubPat(e.target.value)}
+              autoComplete="new-password"
+            />
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px', display: 'block' }}>
+              Scope requis : <strong>repo</strong> (lecture + écriture)
+            </span>
+          </div>
+
+          {/* Repo info (pre-filled, collapsible) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="github-owner">Propriétaire</label>
+              <input id="github-owner" type="text" className="form-control"
+                value={githubOwner} onChange={e => setGithubOwner(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="github-repo">Dépôt</label>
+              <input id="github-repo" type="text" className="form-control"
+                value={githubRepo} onChange={e => setGithubRepo(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="github-branch">Branche</label>
+              <input id="github-branch" type="text" className="form-control"
+                value={githubBranch} onChange={e => setGithubBranch(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="github-path">Fichier de sauvegarde</label>
+              <input id="github-path" type="text" className="form-control"
+                value={githubPath} onChange={e => setGithubPath(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Auto-sync toggle */}
+          <div className="toggle-switch-container">
+            <span className="switch-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <RefreshCw size={14} /> Sauvegarde automatique à chaque modification
+            </span>
+            <label className="switch">
+              <input type="checkbox" checked={githubAutoSync} onChange={e => setGithubAutoSync(e.target.checked)} />
+              <span className="slider" />
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="submit" className="btn-primary" disabled={githubLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              {githubLoading ? <RefreshCw size={14} className="animate-spin" /> : <Shield size={14} />}
+              {githubLoading ? 'Vérification...' : 'Vérifier & Enregistrer'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ══════════════════════════════════════════════════
+          2. GOOGLE CALENDAR
+          ══════════════════════════════════════════════════ */}
       <div className="settings-card">
         <div>
           <h2 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Calendar size={20} /> Intégration Google Agenda
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Synchronisez vos rendez-vous avec le compte <strong>riadh.hachicha@gmail.com</strong>.
+            Synchronisez vos rendez-vous avec <strong>riadh.hachicha@gmail.com</strong>.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-          {/* Status Box */}
-          <div className="sync-status-box" style={{ flexGrow: 1, minWidth: '280px' }}>
-            <div className={`status-indicator ${googleStatus.connected ? 'success' : 'error'}`}></div>
-            <div>
-              <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
-                {googleStatus.connected ? 'Connecté à Google Calendar' : 'Non connecté'}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {googleStatus.connected 
-                  ? `Compte : ${googleStatus.email || 'riadh.hachicha@gmail.com'} ${googleStatus.isMock ? '(Simulé)' : ''}`
-                  : 'Veuillez configurer vos clés ou vous connecter en mode démo.'}
-              </div>
+        {/* Connection status */}
+        <div className="sync-status-box">
+          <div className={`status-indicator ${googleStatus.connected ? 'success' : 'error'}`} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
+              {googleStatus.connected 
+                ? `✅ Connecté — ${googleStatus.email || 'riadh.hachicha@gmail.com'}${googleStatus.isMock ? ' (Démo)' : ''}`
+                : '❌ Non connecté'}
             </div>
-            <div style={{ marginLeft: 'auto' }}>
-              {googleStatus.connected ? (
-                <button className="btn-danger-outline" onClick={onDisconnectGoogle} style={{ padding: '0.45rem 1rem' }}>
-                  Déconnecter
-                </button>
-              ) : (
-                <button className="btn-primary" onClick={() => onConnectGoogle(clientId, apiKey)} style={{ padding: '0.45rem 1rem' }}>
-                  Se connecter
-                </button>
-              )}
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {googleStatus.connected 
+                ? 'Agenda et contacts Gmail synchronisés.'
+                : 'Entrez vos clés API Google ci-dessous pour vous connecter.'}
             </div>
+          </div>
+          <div>
+            {googleStatus.connected ? (
+              <button className="btn-danger-outline" onClick={onDisconnectGoogle} style={{ padding: '0.45rem 1rem' }}>
+                Déconnecter
+              </button>
+            ) : (
+              <button className="btn-primary" onClick={() => onConnectGoogle(clientId, apiKey)} style={{ padding: '0.45rem 1rem' }}>
+                Se connecter
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Credentials Form */}
+        {/* Credentials form */}
         <form onSubmit={handleSaveGoogle} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Key size={14} /> Clés d'API Google Cloud (Optionnel pour Démo)
+          <h3 style={{ fontSize: '0.9rem', fontWeight: '700', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Key size={14} /> Clés API Google Cloud
           </h3>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-            <div className="form-group" style={{ flexGrow: 1, minWidth: '240px', marginBottom: 0 }}>
-              <label htmlFor="clientId">Client ID Google *</label>
-              <input 
-                id="clientId"
-                type="text" 
-                className="form-control" 
-                placeholder="Ex: 123456-abcdef.apps.googleusercontent.com"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-              />
-            </div>
-            <div className="form-group" style={{ flexGrow: 1, minWidth: '240px', marginBottom: 0 }}>
-              <label htmlFor="apiKey">Clé d'API Google *</label>
-              <input 
-                id="apiKey"
-                type="text" 
-                className="form-control" 
-                placeholder="Ex: AIzaSyA123456789..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-            </div>
-          </div>
 
           {!clientId && (
             <div style={{ display: 'flex', gap: '8px', padding: '0.65rem', borderRadius: '8px', background: 'var(--primary-light)', color: 'var(--primary)', fontSize: '0.8rem', marginBottom: '1rem', alignItems: 'flex-start' }}>
               <HelpCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
               <span>
-                <strong>Mode Démo Actif :</strong> Si vous laissez les clés vides et cliquez sur <strong>"Se connecter"</strong>, l'application simulera la synchronisation Google avec des événements de test réalistes.
+                <strong>Mode Démo :</strong> Sans clés, l'app simule la synchro avec des événements fictifs.
+                Pour la vraie connexion, créez un projet sur{' '}
+                <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer"
+                  style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                  console.cloud.google.com
+                </a>
               </span>
             </div>
           )}
 
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <div className="form-group" style={{ flexGrow: 1, minWidth: '240px', marginBottom: 0 }}>
+              <label htmlFor="clientId">Client ID OAuth 2.0</label>
+              <input 
+                id="clientId" type="text" className="form-control"
+                placeholder="123456-abcdef.apps.googleusercontent.com"
+                value={clientId} onChange={(e) => setClientId(e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ flexGrow: 1, minWidth: '240px', marginBottom: 0 }}>
+              <label htmlFor="apiKey">Clé d'API</label>
+              <input 
+                id="apiKey" type="text" className="form-control"
+                placeholder="AIzaSyA123456789..."
+                value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="submit" className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {googleSaved ? 'Enregistré !' : 'Sauvegarder les clés'}
+              {googleSaved ? '✅ Enregistré !' : 'Sauvegarder les clés'}
             </button>
           </div>
         </form>
       </div>
 
-      {/* SUPABASE CONFIG */}
-      <div className="settings-card">
-        <div>
-          <h2 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Database size={20} /> Configuration de la Base de Données Supabase
-          </h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Sauvegardez durablement vos données sur votre propre projet Supabase au lieu du stockage local du navigateur.
-          </p>
-        </div>
-
-        <div className="sync-status-box">
-          <div className={`status-indicator ${supabaseStatus.active ? 'success' : 'warning'}`}></div>
-          <div>
-            <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
-              {supabaseStatus.active ? 'Supabase Actif' : 'Stockage Local Uniquement'}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {supabaseStatus.active 
-                ? 'Les modifications sont synchronisées en temps réel sur Supabase.' 
-                : 'Les données sont sauvegardées uniquement dans le stockage local de votre navigateur.'}
-            </div>
-          </div>
-          {supabaseStatus.active && (
-            <button 
-              type="button" 
-              className="btn-secondary" 
-              onClick={handleSyncLocalData}
-              disabled={syncingDb}
-              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}
-            >
-              <RefreshCw size={14} className={syncingDb ? 'animate-spin' : ''} />
-              Transférer le Local vers Supabase
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleSaveSupabase} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <div className="form-group" style={{ flexGrow: 1, minWidth: '240px', marginBottom: 0 }}>
-              <label htmlFor="supabaseUrl">Supabase URL</label>
-              <input 
-                id="supabaseUrl"
-                type="text" 
-                className="form-control" 
-                placeholder="Ex: https://xyz.supabase.co"
-                value={supabaseUrl}
-                onChange={(e) => setSupabaseUrl(e.target.value)}
-              />
-            </div>
-            <div className="form-group" style={{ flexGrow: 1, minWidth: '240px', marginBottom: 0 }}>
-              <label htmlFor="supabaseKey">Supabase Anon Key</label>
-              <input 
-                id="supabaseKey"
-                type="password" 
-                className="form-control" 
-                placeholder="Clé anonyme de l'API..."
-                value={supabaseKey}
-                onChange={(e) => setSupabaseKey(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {syncStatusMsg && (
-            <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: '600' }}>
-              {syncStatusMsg}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              <AlertTriangle size={14} style={{ color: '#f59e0b' }} />
-              <span>N'oubliez pas d'exécuter le script SQL fourni dans votre éditeur Supabase.</span>
-            </div>
-            
-            <button type="submit" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {supabaseSaved ? 'Sauvegardé !' : 'Enregistrer la configuration'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* SYNC LOGS TABLE */}
+      {/* ══════════════════════════════════════════════════
+          3. JOURNAL DES SYNC
+          ══════════════════════════════════════════════════ */}
       <div className="settings-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -285,7 +369,7 @@ export default function GoogleCalendarSettings({
               Historique des imports, exports et connexions Google Calendar.
             </p>
           </div>
-          <button className="btn-icon" onClick={onRefreshLogs} title="Actualiser le journal">
+          <button className="btn-icon" onClick={onRefreshLogs} title="Actualiser">
             <RefreshCw size={16} />
           </button>
         </div>
@@ -313,7 +397,7 @@ export default function GoogleCalendarSettings({
             })
           ) : (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Aucun journal de synchronisation disponible.
+              Aucun journal disponible.
             </div>
           )}
         </div>

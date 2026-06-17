@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -13,15 +13,17 @@ import {
   CheckCircle2,
   RefreshCw
 } from 'lucide-react'
+import CardColorPicker from './CardColorPicker'
+import { saveItem, getItems } from '../db/db'
 
 // Days of the week in French (Monday to Saturday)
 const DAYS_OF_WEEK = [
-  { name: 'Lundi', key: 'monday', dayIndex: 1 },
-  { name: 'Mardi', key: 'tuesday', dayIndex: 2 },
-  { name: 'Mercredi', key: 'wednesday', dayIndex: 3 },
-  { name: 'Jeudi', key: 'thursday', dayIndex: 4 },
-  { name: 'Vendredi', key: 'friday', dayIndex: 5 },
-  { name: 'Samedi', key: 'saturday', dayIndex: 6 }
+  { name: 'Lundi',    short: 'Lun', key: 'monday',    dayIndex: 1 },
+  { name: 'Mardi',    short: 'Mar', key: 'tuesday',   dayIndex: 2 },
+  { name: 'Mercredi', short: 'Mer', key: 'wednesday', dayIndex: 3 },
+  { name: 'Jeudi',    short: 'Jeu', key: 'thursday',  dayIndex: 4 },
+  { name: 'Vendredi', short: 'Ven', key: 'friday',    dayIndex: 5 },
+  { name: 'Samedi',   short: 'Sam', key: 'saturday',  dayIndex: 6 },
 ]
 
 export default function WeeklyDashboard({ 
@@ -37,10 +39,22 @@ export default function WeeklyDashboard({
   setFilters,
   searchQuery,
   setSearchQuery,
-  onRescheduleItem
+  onRescheduleItem,
+  isMobile,
+  onItemsRefresh
 }) {
   const [dragOverDay, setDragOverDay] = useState(null)
 
+  // ─── Color Picker state ───────────────────────────────────────────────────
+  const [colorPickerItem, setColorPickerItem] = useState(null)   // item being colored
+  const [colorPickerRect, setColorPickerRect] = useState(null)   // anchor DOMRect
+
+  // Double-tap detection for mobile (store last tap time per item)
+  const lastTapRef = useRef({})
+  const [selectedDayKey, setSelectedDayKey] = useState(null) // Mobile: selected day key
+  const selectorRef = useRef(null)
+
+  // ─── Drag & Drop (desktop only) ───────────────────────────────────────────
   const handleDragStart = (e, item) => {
     e.dataTransfer.setData('text/plain', item.id)
     e.dataTransfer.effectAllowed = 'move'
@@ -56,7 +70,7 @@ export default function WeeklyDashboard({
     setDragOverDay(dateString)
   }
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = () => {
     setDragOverDay(null)
   }
 
@@ -69,19 +83,16 @@ export default function WeeklyDashboard({
     }
   }
 
-  // Helper: Find Monday of the week for a given date
+  // ─── Date helpers ──────────────────────────────────────────────────────────
   const getMonday = (d) => {
     const date = new Date(d)
     const day = date.getDay()
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1) // adjust when day is sunday
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1)
     const monday = new Date(date.setDate(diff))
     monday.setHours(0, 0, 0, 0)
     return monday
   }
 
-  const monday = getMonday(activeDate)
-
-  // Helper to format Date object to local YYYY-MM-DD
   const formatLocalDate = (date) => {
     const y = date.getFullYear()
     const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -89,32 +100,40 @@ export default function WeeklyDashboard({
     return `${y}-${m}-${d}`
   }
 
-  // Generate date array for Mon-Sat
+  const monday = getMonday(activeDate)
+
+  // Generate week days array
   const weekDays = DAYS_OF_WEEK.map(day => {
     const date = new Date(monday)
     date.setDate(monday.getDate() + (day.dayIndex - 1))
     const dateString = formatLocalDate(date)
-    
-    // Check if it is today
     const isToday = formatLocalDate(new Date()) === dateString
-    
-    return {
-      ...day,
-      date,
-      dateString,
-      isToday
-    }
+    return { ...day, date, dateString, isToday }
   })
 
-  // Format week range label (e.g., "15 Juin - 20 Juin 2026")
+  // On mobile: auto-select today's day (or Monday if today is not in current week)
+  useEffect(() => {
+    if (!isMobile) return
+    const todayKey = weekDays.find(d => d.isToday)?.key
+    setSelectedDayKey(todayKey || weekDays[0].key)
+  }, [isMobile, activeDate])
+
+  // Scroll selected pill into view
+  useEffect(() => {
+    if (!isMobile || !selectorRef.current) return
+    const selectedEl = selectorRef.current.querySelector('.mobile-day-pill.selected')
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    }
+  }, [selectedDayKey, isMobile])
+
   const formatDateRange = () => {
     const options = { day: 'numeric', month: 'long' }
     const start = weekDays[0].date.toLocaleDateString('fr-FR', options)
-    const end = weekDays[5].date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-    return `${start} - ${end}`
+    const end   = weekDays[5].date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    return `${start} – ${end}`
   }
 
-  // Navigate weeks
   const navigateWeek = (direction) => {
     const newDate = new Date(activeDate)
     newDate.setDate(activeDate.getDate() + (direction * 7))
@@ -125,61 +144,181 @@ export default function WeeklyDashboard({
     setActiveDate(new Date())
   }
 
-  // Filter & Search items
+  // ─── Filter & Search ───────────────────────────────────────────────────────
   const filteredItems = items.filter(item => {
-    // Filter by type
     if (!filters[item.type]) return false
-    
-    // Filter by search query
     if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase()
-      const titleMatch = item.title?.toLowerCase().includes(query)
-      const descMatch = item.description?.toLowerCase().includes(query)
-      const contactMatch = item.contact_name?.toLowerCase().includes(query)
-      const notesMatch = item.notes?.toLowerCase().includes(query)
-      return titleMatch || descMatch || contactMatch || notesMatch
+      const q = searchQuery.toLowerCase()
+      return (
+        item.title?.toLowerCase().includes(q) ||
+        item.description?.toLowerCase().includes(q) ||
+        item.contact_name?.toLowerCase().includes(q) ||
+        item.notes?.toLowerCase().includes(q)
+      )
     }
-    
     return true
   })
 
-  // Group items by date string
   const itemsByDate = filteredItems.reduce((groups, item) => {
-    if (!groups[item.date]) {
-      groups[item.date] = []
-    }
+    if (!groups[item.date]) groups[item.date] = []
     groups[item.date].push(item)
     return groups
   }, {})
 
-  // Get Lucide Icon for item type
+  const toggleFilter = (type) => {
+    setFilters(prev => ({ ...prev, [type]: !prev[type] }))
+  }
+
+  // ─── Icons ─────────────────────────────────────────────────────────────────
   const getItemIcon = (type) => {
     switch (type) {
-      case 'task':
-        return <CheckSquare className="card-icon" size={16} />
-      case 'appointment':
-        return <CalendarDays className="card-icon" size={16} />
-      case 'event':
-        return <Sparkles className="card-icon" size={16} />
-      case 'call':
-        return <Phone className="card-icon" size={16} />
-      default:
-        return <Calendar className="card-icon" size={16} />
+      case 'task':        return <CheckSquare className="card-icon" size={16} />
+      case 'appointment': return <CalendarDays className="card-icon" size={16} />
+      case 'event':       return <Sparkles className="card-icon" size={16} />
+      case 'call':        return <Phone className="card-icon" size={16} />
+      default:            return <Calendar className="card-icon" size={16} />
     }
   }
 
-  const toggleFilter = (type) => {
-    setFilters(prev => ({
-      ...prev,
-      [type]: !prev[type]
-    }))
+  // ─── Color Picker handlers ────────────────────────────────────────────────
+  const handleCardDoubleClick = useCallback((e, item) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    setColorPickerItem(item)
+    setColorPickerRect(rect)
+  }, [])
+
+  // Mobile: detect double-tap (two taps within 300ms)
+  const handleCardTap = useCallback((e, item) => {
+    const now = Date.now()
+    const lastTap = lastTapRef.current[item.id] || 0
+    if (now - lastTap < 350) {
+      // Double tap!
+      e.preventDefault()
+      e.stopPropagation()
+      const rect = e.currentTarget.getBoundingClientRect()
+      setColorPickerItem(item)
+      setColorPickerRect(rect)
+      lastTapRef.current[item.id] = 0
+    } else {
+      lastTapRef.current[item.id] = now
+    }
+  }, [])
+
+  const handleColorApply = useCallback(async (bg, text) => {
+    if (!colorPickerItem) return
+    const updated = { ...colorPickerItem, custom_color: bg, custom_color_text: text }
+    await saveItem(updated)
+    if (onItemsRefresh) onItemsRefresh()
+    setColorPickerItem(null)
+  }, [colorPickerItem, onItemsRefresh])
+
+  const handleColorReset = useCallback(async () => {
+    if (!colorPickerItem) return
+    const { custom_color, custom_color_text, ...rest } = colorPickerItem
+    const updated = { ...rest, custom_color: null, custom_color_text: null }
+    await saveItem(updated)
+    if (onItemsRefresh) onItemsRefresh()
+    setColorPickerItem(null)
+  }, [colorPickerItem, onItemsRefresh])
+
+  // ─── Shared card renderer ──────────────────────────────────────────────────
+  const renderCard = (item) => {
+    const isCompleted = item.status === 'completed'
+    // Determine effective background & text colors
+    const cardBg = item.custom_color || undefined
+    const cardText = item.custom_color_text || undefined
+    return (
+      <div 
+        key={item.id} 
+        className={`agenda-card ${isCompleted ? 'completed' : ''}`}
+        data-type={item.custom_color ? undefined : item.type}
+        onClick={() => onEditItem(item)}
+        onDoubleClick={!isMobile ? (e) => handleCardDoubleClick(e, item) : undefined}
+        onTouchStart={isMobile ? (e) => handleCardTap(e, item) : undefined}
+        draggable={!isMobile}
+        onDragStart={!isMobile ? (e) => handleDragStart(e, item) : undefined}
+        style={{ 
+          cursor: isMobile ? 'pointer' : 'grab',
+          ...(cardBg ? { backgroundColor: cardBg, color: cardText || 'inherit' } : {})
+        }}
+        title={!isMobile ? 'Double-clic pour changer la couleur' : undefined}
+      >
+        <div className="card-header-row">
+          <div className="card-title-group">
+            {getItemIcon(item.type)}
+            <span className="card-title">{item.title}</span>
+          </div>
+
+          {item.type === 'task' && (
+            <button 
+              className="quick-complete-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleComplete(item)
+              }}
+              title={isCompleted ? 'Marquer comme à faire' : 'Marquer comme terminé'}
+            >
+              <CheckCircle2 size={14} fill={isCompleted ? 'currentColor' : 'none'} />
+            </button>
+          )}
+        </div>
+
+        {item.description && (
+          <span className="card-desc">{item.description}</span>
+        )}
+
+        {item.type === 'call' && (item.contact_name || item.phone_number) && (
+          <span className="card-desc" style={{ fontWeight: '500', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
+            {item.contact_name && (
+              <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                👤 {item.contact_name}
+              </span>
+            )}
+            {item.phone_number && (
+              <a 
+                href={`tel:${item.phone_number}`}
+                onClick={(e) => e.stopPropagation()}
+                style={{ color: 'inherit', textDecoration: 'underline', display: 'inline-flex', gap: '4px', alignItems: 'center', fontWeight: 'bold' }}
+                title="Appeler directement"
+              >
+                <Phone size={10} /> {item.phone_number}
+              </a>
+            )}
+          </span>
+        )}
+
+        <div className="card-footer">
+          <span className="card-time">
+            {item.start_time}
+            {item.end_time && ` – ${item.end_time}`}
+          </span>
+          <div className="card-badges">
+            {item.priority === 'urgent' && !isCompleted && (
+              <span className="priority-badge-urgent">Urgent</span>
+            )}
+            {item.google_calendar_id && (
+              <span className="sync-badge" title="Synchronisé Google Calendar">G</span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
+  // ─── MOBILE SELECTED DAY ───────────────────────────────────────────────────
+  const selectedDay = weekDays.find(d => d.key === selectedDayKey) || weekDays[0]
+  const selectedDayItems = (itemsByDate[selectedDay?.dateString] || [])
+    .slice()
+    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+
+  // ──────────────────────────────────────────────────────────────────────────
   return (
     <div className="page-content">
-      {/* TOOLBAR CONTROLS */}
+      {/* ── TOOLBAR ── */}
       <div className="dashboard-toolbar">
-        {/* Navigation */}
+        {/* Week navigation */}
         <div className="nav-arrows">
           <button className="btn-icon" onClick={() => navigateWeek(-1)} title="Semaine précédente">
             <ChevronLeft size={20} />
@@ -190,42 +329,35 @@ export default function WeeklyDashboard({
           <button className="btn-icon" onClick={() => navigateWeek(1)} title="Semaine suivante">
             <ChevronRight size={20} />
           </button>
-          <span className="current-week-label">{formatDateRange()}</span>
+          {!isMobile && (
+            <span className="current-week-label">{formatDateRange()}</span>
+          )}
         </div>
+
+        {/* Week label on mobile (below nav arrows) */}
+        {isMobile && (
+          <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)', textAlign: 'center' }}>
+            {formatDateRange()}
+          </span>
+        )}
 
         {/* Filters */}
         <div className="filters-container">
-          <button 
-            className={`filter-chip ${filters.task ? 'active' : ''}`}
-            onClick={() => toggleFilter('task')}
-            data-type="task"
-          >
+          <button className={`filter-chip ${filters.task ? 'active' : ''}`} onClick={() => toggleFilter('task')} data-type="task">
             <CheckSquare size={14} /> Tâches
           </button>
-          <button 
-            className={`filter-chip ${filters.appointment ? 'active' : ''}`}
-            onClick={() => toggleFilter('appointment')}
-            data-type="appointment"
-          >
+          <button className={`filter-chip ${filters.appointment ? 'active' : ''}`} onClick={() => toggleFilter('appointment')} data-type="appointment">
             <CalendarDays size={14} /> RDV
           </button>
-          <button 
-            className={`filter-chip ${filters.event ? 'active' : ''}`}
-            onClick={() => toggleFilter('event')}
-            data-type="event"
-          >
+          <button className={`filter-chip ${filters.event ? 'active' : ''}`} onClick={() => toggleFilter('event')} data-type="event">
             <Sparkles size={14} /> Événements
           </button>
-          <button 
-            className={`filter-chip ${filters.call ? 'active' : ''}`}
-            onClick={() => toggleFilter('call')}
-            data-type="call"
-          >
+          <button className={`filter-chip ${filters.call ? 'active' : ''}`} onClick={() => toggleFilter('call')} data-type="call">
             <Phone size={14} /> Appels
           </button>
         </div>
 
-        {/* Search & Actions */}
+        {/* Search & actions */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <div className="search-box">
             <Search size={16} />
@@ -240,144 +372,148 @@ export default function WeeklyDashboard({
             className="btn-secondary" 
             onClick={onSyncGoogleCalendar}
             disabled={syncing}
-            style={{ padding: '0.55rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ padding: '0.55rem', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px' }}
             title="Synchroniser Google Agenda"
           >
             <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
           </button>
-          <button className="btn-primary" onClick={() => onAddItem()}>
-            <Plus size={18} /> Nouveau
-          </button>
+          {!isMobile && (
+            <button className="btn-primary" onClick={() => onAddItem()}>
+              <Plus size={18} /> Nouveau
+            </button>
+          )}
         </div>
       </div>
 
-      {/* WEEK GRID (6 COLUMNS) */}
-      <div className="week-grid">
-        {weekDays.map(day => {
-          const dayItems = itemsByDate[day.dateString] || []
-          // Sort items by start time
-          dayItems.sort((a, b) => a.start_time.localeCompare(b.start_time))
+      {/* ══════════════════════════════════════════════
+          MOBILE VIEW: Day pill selector + single day
+          ══════════════════════════════════════════════ */}
+      {isMobile ? (
+        <>
+          {/* Horizontal day pill selector */}
+          <div className="mobile-day-selector" ref={selectorRef}>
+            {weekDays.map(day => {
+              const dayItemCount = (itemsByDate[day.dateString] || []).length
+              const isSelected = selectedDayKey === day.key
+              return (
+                <button
+                  key={day.key}
+                  className={[
+                    'mobile-day-pill',
+                    day.isToday ? 'today' : '',
+                    isSelected ? 'selected' : '',
+                    dayItemCount > 0 ? 'has-items' : ''
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => setSelectedDayKey(day.key)}
+                  aria-label={`${day.name} ${day.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
+                  aria-pressed={isSelected}
+                >
+                  <span className="pill-name">{day.short}</span>
+                  <span className="pill-num">{day.date.getDate()}</span>
+                  <span className="pill-dot" aria-hidden="true" />
+                </button>
+              )
+            })}
+          </div>
 
-          return (
-            <div 
-              key={day.key} 
-              className={`day-column ${day.isToday ? 'today' : ''}`}
-              onDragOver={handleDragOver}
-              onDragEnter={(e) => handleDragEnter(e, day.dateString)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, day.dateString)}
-              style={dragOverDay === day.dateString ? { 
-                background: 'rgba(79, 70, 229, 0.12)', 
-                border: '2px dashed var(--primary)',
-                transition: 'all 0.15s ease'
-              } : {}}
-            >
-              <div className="day-header">
-                <span className="day-name">{day.name}</span>
-                <span className="day-date">
-                  {day.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+          {/* Selected day content */}
+          <div style={{ flex: 1 }}>
+            {/* Day label */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.75rem',
+              padding: '0 0.1rem'
+            }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: '1.15rem', color: selectedDay?.isToday ? 'var(--primary)' : 'var(--text-main)' }}>
+                  {selectedDay?.name}
+                </span>
+                <span style={{ marginLeft: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  {selectedDay?.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
               </div>
-
-              <div className="items-list">
-                {dayItems.length > 0 ? (
-                  dayItems.map(item => {
-                    const isCompleted = item.status === 'completed'
-                    
-                    return (
-                      <div 
-                        key={item.id} 
-                        className={`agenda-card ${isCompleted ? 'completed' : ''}`}
-                        data-type={item.type}
-                        onClick={() => onEditItem(item)}
-                        draggable="true"
-                        onDragStart={(e) => handleDragStart(e, item)}
-                        style={{ cursor: 'grab' }}
-                      >
-                        <div className="card-header-row">
-                          <div className="card-title-group">
-                            {getItemIcon(item.type)}
-                            <span className="card-title">{item.title}</span>
-                          </div>
-                          
-                          {/* Quick checkmark for tasks */}
-                          {item.type === 'task' && (
-                            <button 
-                              className="quick-complete-btn"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onToggleComplete(item)
-                              }}
-                              title={isCompleted ? "Marquer comme à faire" : "Marquer comme terminé"}
-                            >
-                              <CheckCircle2 size={12} fill={isCompleted ? "currentColor" : "none"} />
-                            </button>
-                          )}
-                        </div>
-
-                        {item.description && (
-                          <span className="card-desc">{item.description}</span>
-                        )}
-
-                        {item.type === 'call' && (item.contact_name || item.phone_number) && (
-                          <span className="card-desc" style={{ fontWeight: '500', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
-                            {item.contact_name && (
-                              <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                👤 {item.contact_name}
-                              </span>
-                            )}
-                            {item.phone_number && (
-                              <a 
-                                href={`tel:${item.phone_number}`}
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ 
-                                  color: 'inherit', 
-                                  textDecoration: 'underline', 
-                                  display: 'inline-flex', 
-                                  gap: '4px', 
-                                  alignItems: 'center', 
-                                  fontWeight: 'bold'
-                                }}
-                                title="Appeler directement"
-                              >
-                                <Phone size={10} /> {item.phone_number}
-                              </a>
-                            )}
-                          </span>
-                        )}
-
-                        <div className="card-footer">
-                          <span className="card-time">
-                            {item.start_time}
-                            {item.end_time && ` - ${item.end_time}`}
-                          </span>
-
-                          <div className="card-badges">
-                            {item.priority === 'urgent' && !isCompleted && (
-                              <span className="priority-badge-urgent">Urgent</span>
-                            )}
-                            
-                            {item.google_calendar_id && (
-                              <span className="sync-badge" title="Synchronisé avec Google Calendar">
-                                G
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div className="empty-day-state">
-                    <Calendar size={20} strokeWidth={1.5} />
-                    <span>Aucun élément</span>
-                  </div>
-                )}
-              </div>
+              <button
+                className="btn-primary"
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', gap: '0.3rem' }}
+                onClick={() => onAddItem(selectedDay?.dateString)}
+              >
+                <Plus size={14} /> Ajouter
+              </button>
             </div>
-          )
-        })}
-      </div>
+
+            {/* Cards for selected day */}
+            {selectedDayItems.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {selectedDayItems.map(item => renderCard(item))}
+              </div>
+            ) : (
+              <div className="empty-day-state" style={{ minHeight: '200px' }}>
+                <Calendar size={32} strokeWidth={1.5} />
+                <span style={{ fontWeight: '600' }}>Journée libre</span>
+                <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Appuyez sur + pour ajouter un élément</span>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* ════════════════════════════════════════════
+           DESKTOP VIEW: 6-column week grid
+           ════════════════════════════════════════════ */
+        <div className="week-grid">
+          {weekDays.map(day => {
+            const dayItems = (itemsByDate[day.dateString] || [])
+              .slice()
+              .sort((a, b) => a.start_time.localeCompare(b.start_time))
+
+            return (
+              <div 
+                key={day.key} 
+                className={`day-column ${day.isToday ? 'today' : ''}`}
+                onDragOver={handleDragOver}
+                onDragEnter={(e) => handleDragEnter(e, day.dateString)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, day.dateString)}
+                style={dragOverDay === day.dateString ? { 
+                  background: 'rgba(79, 70, 229, 0.12)', 
+                  border: '2px dashed var(--primary)',
+                  transition: 'all 0.15s ease'
+                } : {}}
+              >
+                <div className="day-header">
+                  <span className="day-name">{day.name}</span>
+                  <span className="day-date">
+                    {day.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+
+                <div className="items-list">
+                  {dayItems.length > 0 ? (
+                    dayItems.map(item => renderCard(item))
+                  ) : (
+                    <div className="empty-day-state">
+                      <Calendar size={20} strokeWidth={1.5} />
+                      <span>Aucun élément</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── COLOR PICKER POPUP ── */}
+      {colorPickerItem && (
+        <CardColorPicker
+          item={colorPickerItem}
+          anchorRect={colorPickerRect}
+          onApply={handleColorApply}
+          onReset={handleColorReset}
+          onClose={() => setColorPickerItem(null)}
+        />
+      )}
     </div>
   )
 }

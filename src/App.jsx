@@ -10,7 +10,9 @@ import {
   CheckSquare,
   AlertOctagon,
   X,
-  Volume2
+  Volume2,
+  Plus,
+  RefreshCw
 } from 'lucide-react'
 import WeeklyDashboard from './components/WeeklyDashboard'
 import ItemFormModal from './components/ItemFormModal'
@@ -18,6 +20,8 @@ import ListView from './components/ListView'
 import ColorSettings from './components/ColorSettings'
 import GoogleCalendarSettings from './components/GoogleCalendarSettings'
 import NotificationCenter from './components/NotificationCenter'
+import DayView from './components/DayView'
+
 
 import { 
   getItems, 
@@ -40,7 +44,20 @@ import {
   getAccessToken
 } from './services/googleCalendar'
 
+// Hook to detect mobile viewport
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return isMobile
+}
+
 export default function App() {
+  const isMobile = useIsMobile()
+
   // Navigation tabs
   const [activeTab, setActiveTab] = useState('dashboard') // 'dashboard', 'list', 'settings'
   const [settingsSubTab, setSettingsSubTab] = useState('colors') // 'colors', 'google', 'notifications'
@@ -93,24 +110,19 @@ export default function App() {
   // ==========================================
   useEffect(() => {
     async function loadData() {
-      // 1. Load color settings
       const dbColors = await getColorSettings()
       setColors(dbColors)
       updateCssVariables(dbColors)
 
-      // 2. Load reminder settings
       const dbReminders = await getReminderSettings()
       setReminderSettings(dbReminders)
 
-      // 3. Load items
       const dbItems = await getItems()
       setItems(dbItems)
 
-      // 4. Load sync logs
       const dbLogs = await getSyncLogs()
       setSyncLogs(dbLogs)
 
-      // 5. Restore google token status if valid
       const gcalToken = localStorage.getItem('gcal_token')
       if (gcalToken) {
         try {
@@ -140,7 +152,6 @@ export default function App() {
       const nowMs = Date.now()
       
       items.forEach(item => {
-        // Skip completed/cancelled or inactive reminders
         if (
           !item.reminder_active || 
           !item.reminder_time || 
@@ -149,8 +160,6 @@ export default function App() {
         ) return
 
         const reminderTimeMs = new Date(item.reminder_time).getTime()
-        
-        // Trigger if time is reached, but not older than 2 minutes (avoid triggering expired history)
         const isTime = nowMs >= reminderTimeMs && nowMs < (reminderTimeMs + 120000)
         const isAlreadyDismissed = dismissedReminders.includes(item.id)
         const isCurrentlyShowing = activeAlert && activeAlert.id === item.id
@@ -159,13 +168,12 @@ export default function App() {
           triggerReminder(item)
         }
       })
-    }, 15000) // check every 15 seconds
+    }, 15000)
 
     return () => clearInterval(checkRemindersInterval)
   }, [items, reminderSettings, dismissedReminders, activeAlert])
 
   const triggerReminder = (item) => {
-    // 1. Play Sound
     if (reminderSettings.sound_active) {
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
@@ -173,20 +181,17 @@ export default function App() {
         const gain = audioCtx.createGain()
         osc.connect(gain)
         gain.connect(audioCtx.destination)
-        
         osc.type = 'sine'
-        osc.frequency.setValueAtTime(659.25, audioCtx.currentTime) // E5
+        osc.frequency.setValueAtTime(659.25, audioCtx.currentTime)
         gain.gain.setValueAtTime(0.08, audioCtx.currentTime)
-        
         osc.start()
-        setTimeout(() => osc.frequency.setValueAtTime(880, audioCtx.currentTime), 120) // A5
+        setTimeout(() => osc.frequency.setValueAtTime(880, audioCtx.currentTime), 120)
         setTimeout(() => osc.stop(), 300)
       } catch (e) {
         console.warn('Audio play failure:', e)
       }
     }
 
-    // 2. Desktop Push Notification
     if (
       reminderSettings.browser_notifications && 
       'Notification' in window && 
@@ -202,7 +207,6 @@ export default function App() {
       }
     }
 
-    // 3. Show In-App Banner Modal
     setActiveAlert(item)
   }
 
@@ -216,14 +220,11 @@ export default function App() {
   // ==========================================
   const handleSaveItem = async (savedData) => {
     const saved = await saveItem(savedData)
-    
-    // Refresh items state
     const updatedItems = await getItems()
     setItems(updatedItems)
     setShowFormModal(false)
     setEditingItem(null)
 
-    // Trigger google export auto if item is modified/created and google is connected
     if (googleStatus.connected && (saved.type === 'appointment' || saved.type === 'event')) {
       try {
         await exportItemToGoogle(saved, googleConfig.clientId, googleConfig.apiKey)
@@ -257,14 +258,12 @@ export default function App() {
     const itemToMove = items.find(i => i.id === itemId)
     if (!itemToMove) return
 
-    // Recalculate reminder time if active based on new date
     let reminder_time = itemToMove.reminder_time
     if (itemToMove.reminder_active && itemToMove.reminder_time && itemToMove.start_time) {
       try {
         const oldItemTime = new Date(`${itemToMove.date}T${itemToMove.start_time}:00`).getTime()
         const oldReminderTime = new Date(itemToMove.reminder_time).getTime()
         const offsetMs = oldItemTime - oldReminderTime
-
         const newItemTime = new Date(`${newDateString}T${itemToMove.start_time}:00`).getTime()
         reminder_time = new Date(newItemTime - offsetMs).toISOString()
       } catch (e) {
@@ -282,7 +281,6 @@ export default function App() {
     const refreshed = await getItems()
     setItems(refreshed)
 
-    // Trigger auto google export if connected
     if (googleStatus.connected && (updated.type === 'appointment' || updated.type === 'event')) {
       try {
         await exportItemToGoogle(updated, googleConfig.clientId, googleConfig.apiKey)
@@ -328,24 +326,21 @@ export default function App() {
 
   const handleSyncGoogleCalendar = async () => {
     if (!googleStatus.connected) {
-      alert('Veuillez d’abord connecter votre compte Google dans les paramètres.')
+      alert('Veuillez d\'abord connecter votre compte Google dans les paramètres.')
       return
     }
 
     setSyncingGcal(true)
     try {
       const stats = await importGoogleEvents(items, googleConfig.clientId, googleConfig.apiKey)
-      
-      // Reload everything
       const updatedItems = await getItems()
       setItems(updatedItems)
       const logs = await getSyncLogs()
       setSyncLogs(logs)
-
-      alert(`Synchronisation terminée avec succès !\nÉléments importés : ${stats.imported}\nDoublons évités : ${stats.duplicates}`)
+      alert(`Synchronisation terminée !\nImportés : ${stats.imported}\nDoublons : ${stats.duplicates}`)
     } catch (error) {
       console.error(error)
-      alert(`Erreur lors de la synchronisation : ${error.message}`)
+      alert(`Erreur : ${error.message}`)
     } finally {
       setSyncingGcal(false)
     }
@@ -356,9 +351,9 @@ export default function App() {
       await exportItemToGoogle(item, googleConfig.clientId, googleConfig.apiKey)
       const updated = await getItems()
       setItems(updated)
-      alert('Élément exporté avec succès vers Google Calendar !')
+      alert('Élément exporté vers Google Calendar !')
     } catch (error) {
-      alert(`Erreur lors de l'exportation : ${error.message}`)
+      alert(`Erreur : ${error.message}`)
     }
   }
 
@@ -367,7 +362,6 @@ export default function App() {
     setSyncLogs(logs)
   }
 
-  // Helper to get category icons for Alert Banner
   const getAlertIcon = (type) => {
     switch (type) {
       case 'task': return <CheckSquare size={20} />
@@ -378,16 +372,23 @@ export default function App() {
     }
   }
 
+  // Open modal to add item (optionally for a specific date)
+  const openAddModal = (dayDate) => {
+    setDefaultModalDate(dayDate || '')
+    setEditingItem(null)
+    setShowFormModal(true)
+  }
+
   return (
     <div className="app-container">
-      {/* HEADER WITH GLASSMORPHISM */}
+      {/* ===== HEADER ===== */}
       <header className="header-glass">
         <div className="brand">
           <Calendar size={28} />
-          <h1>Mon Agenda Personnel</h1>
+          <h1>Mon Agenda</h1>
         </div>
 
-        {/* Global tab routing */}
+        {/* Desktop navigation */}
         <nav className="nav-menu">
           <button 
             className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -396,10 +397,16 @@ export default function App() {
             <Calendar size={16} /> Semaine
           </button>
           <button 
+            className={`nav-link ${activeTab === 'day' ? 'active' : ''}`}
+            onClick={() => setActiveTab('day')}
+          >
+            <CalendarDays size={16} /> Jour
+          </button>
+          <button 
             className={`nav-link ${activeTab === 'list' ? 'active' : ''}`}
             onClick={() => setActiveTab('list')}
           >
-            <ListTodo size={16} /> Liste Complète
+            <ListTodo size={16} /> Liste
           </button>
           <button 
             className={`nav-link ${activeTab === 'settings' ? 'active' : ''}`}
@@ -410,28 +417,42 @@ export default function App() {
         </nav>
 
         <div className="header-actions">
-          {/* Quick status bar */}
+          {/* Google status indicator */}
           <div style={{ display: 'flex', gap: '10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span className={`status-indicator ${googleStatus.connected ? 'success' : 'error'}`} style={{ width: '8px', height: '8px' }}></span>
-              Google Calendar
+              {isMobile ? 'GCal' : 'Google Calendar'}
             </span>
           </div>
+
+          {/* Desktop sync + add buttons */}
+          {!isMobile && (
+            <>
+              <button
+                className="btn-secondary"
+                onClick={handleSyncGoogleCalendar}
+                disabled={syncingGcal}
+                title="Synchroniser Google Agenda"
+                style={{ padding: '0.55rem', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px' }}
+              >
+                <RefreshCw size={18} className={syncingGcal ? 'animate-spin' : ''} />
+              </button>
+              <button className="btn-primary" onClick={() => openAddModal()}>
+                <Plus size={18} /> Nouveau
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      {/* RENDER ACTIVE TAB */}
-      <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* ===== MAIN CONTENT ===== */}
+      <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', padding: isMobile ? '0.75rem' : '0' }}>
         {activeTab === 'dashboard' && (
           <WeeklyDashboard 
             items={items}
             activeDate={activeDate}
             setActiveDate={setActiveDate}
-            onAddItem={(dayDate) => {
-              setDefaultModalDate(dayDate)
-              setEditingItem(null)
-              setShowFormModal(true)
-            }}
+            onAddItem={openAddModal}
             onEditItem={(item) => {
               setEditingItem(item)
               setShowFormModal(true)
@@ -444,6 +465,26 @@ export default function App() {
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             onRescheduleItem={handleRescheduleItem}
+            isMobile={isMobile}
+            onItemsRefresh={async () => {
+              const refreshed = await getItems()
+              setItems(refreshed)
+            }}
+          />
+        )}
+
+        {activeTab === 'day' && (
+          <DayView
+            items={items}
+            activeDate={activeDate}
+            setActiveDate={setActiveDate}
+            onAddItem={openAddModal}
+            onEditItem={(item) => {
+              setEditingItem(item)
+              setShowFormModal(true)
+            }}
+            onToggleComplete={handleToggleComplete}
+            isMobile={isMobile}
           />
         )}
 
@@ -454,6 +495,7 @@ export default function App() {
               setEditingItem(item)
               setShowFormModal(true)
             }}
+            isMobile={isMobile}
           />
         )}
 
@@ -464,19 +506,19 @@ export default function App() {
                 className={`settings-tab ${settingsSubTab === 'colors' ? 'active' : ''}`}
                 onClick={() => setSettingsSubTab('colors')}
               >
-                🎨 Couleurs des catégories
+                🎨 {isMobile ? 'Couleurs' : 'Couleurs des catégories'}
               </button>
               <button 
                 className={`settings-tab ${settingsSubTab === 'google' ? 'active' : ''}`}
                 onClick={() => setSettingsSubTab('google')}
               >
-                📅 Google Calendar & Supabase
+                📅 {isMobile ? 'Google' : 'Google Calendar & Supabase'}
               </button>
               <button 
                 className={`settings-tab ${settingsSubTab === 'notifications' ? 'active' : ''}`}
                 onClick={() => setSettingsSubTab('notifications')}
               >
-                🔔 Rappels & Alertes
+                🔔 {isMobile ? 'Rappels' : 'Rappels & Alertes'}
               </button>
             </aside>
 
@@ -513,7 +555,57 @@ export default function App() {
         )}
       </main>
 
-      {/* FORM MODAL (ADD / MODIFY) */}
+      {/* ===== MOBILE BOTTOM NAVIGATION ===== */}
+      {isMobile && (
+        <nav className="mobile-bottom-nav" role="navigation" aria-label="Navigation principale">
+          <button
+            id="mobile-nav-dashboard"
+            className={`mobile-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <Calendar size={22} />
+            <span>Semaine</span>
+          </button>
+          <button
+            id="mobile-nav-day"
+            className={`mobile-nav-item ${activeTab === 'day' ? 'active' : ''}`}
+            onClick={() => setActiveTab('day')}
+          >
+            <CalendarDays size={22} />
+            <span>Jour</span>
+          </button>
+          <button
+            id="mobile-nav-list"
+            className={`mobile-nav-item ${activeTab === 'list' ? 'active' : ''}`}
+            onClick={() => setActiveTab('list')}
+          >
+            <ListTodo size={22} />
+            <span>Liste</span>
+          </button>
+          <button
+            id="mobile-nav-settings"
+            className={`mobile-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <SettingsIcon size={22} />
+            <span>Réglages</span>
+          </button>
+        </nav>
+      )}
+
+      {/* ===== MOBILE FAB (Floating Action Button) ===== */}
+      {isMobile && activeTab !== 'settings' && (
+        <button
+          id="mobile-fab-add"
+          className="mobile-fab"
+          onClick={() => openAddModal()}
+          aria-label="Ajouter un élément"
+        >
+          <Plus size={26} />
+        </button>
+      )}
+
+      {/* ===== FORM MODAL (ADD / MODIFY) ===== */}
       {showFormModal && (
         <ItemFormModal 
           item={editingItem}
@@ -529,13 +621,13 @@ export default function App() {
         />
       )}
 
-      {/* REAL-TIME ALARM BANNER (MODAL OVERLAY) */}
+      {/* ===== REAL-TIME ALARM BANNER ===== */}
       {activeAlert && (
         <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div className="modal-content" style={{ maxWidth: '420px', border: '2px solid var(--primary)' }}>
+          <div className="modal-content" style={{ maxWidth: isMobile ? '100%' : '420px', border: '2px solid var(--primary)' }}>
             <div className="modal-header" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
               <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Bell className="animate-bounce" size={20} />
+                <Bell size={20} />
                 RAPPEL IMPORTANT !
               </h2>
             </div>

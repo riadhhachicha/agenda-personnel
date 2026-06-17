@@ -4,7 +4,13 @@ let tokenClient = null
 let gapiInited = false
 let gisInited = false
 
-const SCOPES = 'https://www.googleapis.com/auth/calendar.events'
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/userinfo.email'
+].join(' ')
+
 
 // Load GIS script dynamically if needed (already loaded in index.html, but let's double check)
 export const initGoogleClient = (clientId, apiKey, onStatusChange) => {

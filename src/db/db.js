@@ -123,6 +123,17 @@ export const saveItem = async (item) => {
     }
   }
 
+  // Auto-sync to GitHub if enabled (async, non-blocking)
+  if (localStorage.getItem('github_auto_sync') === 'true' && localStorage.getItem('github_pat')) {
+    try {
+      const { pushToGithub } = await import('../services/githubSync')
+      const allItems = localStorage.getItem('agenda_items') ? JSON.parse(localStorage.getItem('agenda_items')) : []
+      pushToGithub(allItems).catch(e => console.warn('GitHub auto-sync failed:', e.message))
+    } catch (e) {
+      console.warn('GitHub auto-sync import failed:', e.message)
+    }
+  }
+
   return finalItem
 }
 

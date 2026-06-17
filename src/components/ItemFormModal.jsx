@@ -13,6 +13,7 @@ import {
   AlertOctagon,
   FileText
 } from 'lucide-react'
+import ContactAutocomplete from './ContactAutocomplete'
 
 const PRIORITIES = [
   { value: 'low', label: 'Basse' },
@@ -299,23 +300,21 @@ export default function ItemFormModal({
               </div>
             </div>
 
-            {/* CONTACT NAME (ONLY FOR CALLS) */}
             {type === 'call' && (
               <div className="form-grid" style={{ marginBottom: '1rem' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label htmlFor="contact_name">Nom du contact</label>
-                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <User size={16} style={{ position: 'absolute', left: '10px', color: 'var(--text-light)' }} />
-                    <input 
-                      id="contact_name"
-                      type="text" 
-                      className="form-control" 
-                      placeholder="Ex: Jean Dupont" 
-                      value={contactName} 
-                      onChange={(e) => setContactName(e.target.value)}
-                      style={{ paddingLeft: '2.2rem', width: '100%' }}
-                    />
-                  </div>
+                  <ContactAutocomplete
+                    value={contactName}
+                    phoneValue={phoneNumber}
+                    onNameChange={setContactName}
+                    onPhoneChange={setPhoneNumber}
+                    onContactSelect={({ name, phone }) => {
+                      setContactName(name)
+                      setPhoneNumber(phone)
+                    }}
+                    googleConnected={googleConnected}
+                  />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label htmlFor="phone_number">Numéro de téléphone</label>
