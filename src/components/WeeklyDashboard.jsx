@@ -16,7 +16,8 @@ import {
   Package,
   Users,
   FileText,
-  Factory
+  Factory,
+  Clock
 } from 'lucide-react'
 import CardColorPicker from './CardColorPicker'
 import { saveItem, getItems } from '../db/db'
@@ -58,6 +59,94 @@ export default function WeeklyDashboard({
   const lastTapRef = useRef({})
   const [selectedDayKey, setSelectedDayKey] = useState(null) // Mobile: selected day key
   const selectorRef = useRef(null)
+
+  const [currentMinutes, setCurrentMinutes] = useState(
+    new Date().getHours() * 60 + new Date().getMinutes()
+  )
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date()
+      setCurrentMinutes(now.getHours() * 60 + now.getMinutes())
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const categoryRGBs = {
+    achats_divers:        '55, 48, 163',
+    achats_mp:            '6, 95, 70',
+    client:               '146, 64, 14',
+    rendezvous:           '157, 23, 77',
+    tache_administrative: '55, 65, 81',
+    tache_usine:          '8, 145, 178',
+    call:                 '159, 18, 57'
+  }
+
+  const hexToRgb = (hex) => {
+    if (!hex) return null
+    const cleaned = hex.replace('#', '')
+    if (cleaned.length === 3) {
+      const r = parseInt(cleaned[0] + cleaned[0], 16)
+      const g = parseInt(cleaned[1] + cleaned[1], 16)
+      const b = parseInt(cleaned[2] + cleaned[2], 16)
+      return `${r}, ${g}, ${b}`
+    } else if (cleaned.length === 6) {
+      const r = parseInt(cleaned.slice(0, 2), 16)
+      const g = parseInt(cleaned.slice(2, 4), 16)
+      const b = parseInt(cleaned.slice(4, 6), 16)
+      return `${r}, ${g}, ${b}`
+    }
+    return null
+  }
+
+  const getBlinkColor = (item) => {
+    if (item.custom_color) {
+      const rgb = hexToRgb(item.custom_color)
+      if (rgb) return rgb
+    }
+    return categoryRGBs[item.type] || '79, 70, 229'
+  }
+
+  const handlePostponeItem = async (e, item) => {
+    e.stopPropagation()
+    const [h, m] = item.start_time.split(':').map(Number)
+    const startMin = h * 60 + m
+    const endMin = item.end_time ? item.end_time.split(':').map(Number).reduce((he, me) => he * 60 + me) : startMin + 30
+    
+    const newStart = startMin + 30
+    const newEnd = endMin + 30
+    
+    const maxAllowed = 22 * 60 // 22:00
+    let updatedDate = item.date
+    let finalStart = newStart
+    let finalEnd = newEnd
+
+    if (newStart >= maxAllowed) {
+      const d = new Date(item.date)
+      d.setDate(d.getDate() + 1)
+      const y = d.getFullYear()
+      const mo = String(d.getMonth() + 1).padStart(2, '0')
+      const da = String(d.getDate()).padStart(2, '0')
+      updatedDate = `${y}-${mo}-${da}`
+      finalStart = 9 * 60 // 09:00
+      finalEnd = 9 * 60 + (endMin - startMin)
+    }
+
+    const sh = Math.floor(finalStart / 60)
+    const sm = finalStart % 60
+    const eh = Math.floor(finalEnd / 60)
+    const em = finalEnd % 60
+
+    const updated = {
+      ...item,
+      date: updatedDate,
+      start_time: `${String(sh).padStart(2, '0')}:${String(sm).padStart(2, '0')}`,
+      end_time: `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`
+    }
+    
+    await saveItem(updated)
+    if (onItemsRefresh) onItemsRefresh()
+  }
 
   // ─── Drag & Drop (desktop only) ───────────────────────────────────────────
   const handleDragStart = (e, item) => {
@@ -237,10 +326,15 @@ export default function WeeklyDashboard({
     // Determine effective background & text colors
     const cardBg = item.custom_color || undefined
     const cardText = item.custom_color_text || undefined
+
+    const todayStr = formatLocalDate(new Date())
+    const startMin = item.start_time ? item.start_time.split(':').map(Number).reduce((h, m) => h * 60 + m) : null
+    const isBlinking = item.date === todayStr && startMin !== null && currentMinutes >= startMin && !isCompleted && item.status !== 'cancelled'
+
     return (
       <div 
         key={item.id} 
-        className={`agenda-card ${isCompleted ? 'completed' : ''}`}
+        className={`agenda-card ${isCompleted ? 'completed' : ''} ${isBlinking ? 'arrived-blink' : ''}`}
         data-type={item.custom_color ? undefined : item.type}
         onClick={() => onEditItem(item)}
         onDoubleClick={!isMobile ? (e) => handleCardDoubleClick(e, item) : undefined}
@@ -249,7 +343,8 @@ export default function WeeklyDashboard({
         onDragStart={!isMobile ? (e) => handleDragStart(e, item) : undefined}
         style={{ 
           cursor: isMobile ? 'pointer' : 'grab',
-          ...(cardBg ? { backgroundColor: cardBg, color: cardText || 'inherit' } : {})
+          ...(cardBg ? { backgroundColor: cardBg, color: cardText || 'inherit' } : {}),
+          '--blink-color-rgb': getBlinkColor(item)
         }}
         title={!isMobile ? 'Double-clic pour changer la couleur' : undefined}
       >
@@ -259,18 +354,30 @@ export default function WeeklyDashboard({
             <span className="card-title">{item.title}</span>
           </div>
 
-          {item.type === 'task' && (
-            <button 
-              className="quick-complete-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleComplete(item)
-              }}
-              title={isCompleted ? 'Marquer comme à faire' : 'Marquer comme terminé'}
-            >
-              <CheckCircle2 size={14} fill={isCompleted ? 'currentColor' : 'none'} />
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+            {isBlinking && (
+              <button 
+                type="button"
+                className="quick-postpone-btn"
+                onClick={(e) => handlePostponeItem(e, item)}
+                title="Reporter de 30 min"
+              >
+                <Clock size={12} />
+              </button>
+            )}
+            {item.type === 'task' && (
+              <button 
+                className="quick-complete-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleComplete(item)
+                }}
+                title={isCompleted ? 'Marquer comme à faire' : 'Marquer comme terminé'}
+              >
+                <CheckCircle2 size={14} fill={isCompleted ? 'currentColor' : 'none'} />
+              </button>
+            )}
+          </div>
         </div>
 
         {item.description && (

@@ -2716,3 +2716,54 @@ input:checked + .slider:before {
     height: 28px;
   }
 }
+
+/* ==========================================================================
+   DAY VIEW — Arrived/Overdue Blinking Border & Postpone Button
+   ========================================================================== */
+
+@keyframes border-pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0px rgba(var(--blink-color-rgb, 79, 70, 229), 0.7);
+    outline: 2px solid rgba(var(--blink-color-rgb, 79, 70, 229), 0.7);
+  }
+  50% {
+    box-shadow: 0 0 10px 3px rgba(var(--blink-color-rgb, 79, 70, 229), 0.4);
+    outline: 2px solid rgba(var(--blink-color-rgb, 79, 70, 229), 0.1);
+  }
+  100% {
+    box-shadow: 0 0 0 0px rgba(var(--blink-color-rgb, 79, 70, 229), 0);
+    outline: 2px solid rgba(var(--blink-color-rgb, 79, 70, 229), 0);
+  }
+}
+
+.day-event-block.arrived-blink {
+  animation: border-pulse-glow 1.8s infinite ease-in-out;
+  z-index: 5;
+}
+
+.quick-postpone-btn {
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: inherit;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  flex-shrink: 0;
+}
+
+.quick-postpone-btn:hover {
+  background: white;
+  transform: scale(1.1);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Blinking for Weekly Dashboard cards */
+.agenda-card.arrived-blink {
+  animation: border-pulse-glow 1.8s infinite ease-in-out;
+  border-width: 2px;
+}

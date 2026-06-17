@@ -77,6 +77,84 @@ export default function DayView({
   const [popover, setPopover] = useState(null)
   const popoverRef = useRef(null)
 
+  const [currentMinutes, setCurrentMinutes] = useState(
+    new Date().getHours() * 60 + new Date().getMinutes()
+  )
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date()
+      setCurrentMinutes(now.getHours() * 60 + now.getMinutes())
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const categoryRGBs = {
+    achats_divers:        '55, 48, 163',
+    achats_mp:            '6, 95, 70',
+    client:               '146, 64, 14',
+    rendezvous:           '157, 23, 77',
+    tache_administrative: '55, 65, 81',
+    tache_usine:          '8, 145, 178',
+    call:                 '159, 18, 57'
+  }
+
+  const hexToRgb = (hex) => {
+    if (!hex) return null
+    const cleaned = hex.replace('#', '')
+    if (cleaned.length === 3) {
+      const r = parseInt(cleaned[0] + cleaned[0], 16)
+      const g = parseInt(cleaned[1] + cleaned[1], 16)
+      const b = parseInt(cleaned[2] + cleaned[2], 16)
+      return `${r}, ${g}, ${b}`
+    } else if (cleaned.length === 6) {
+      const r = parseInt(cleaned.slice(0, 2), 16)
+      const g = parseInt(cleaned.slice(2, 4), 16)
+      const b = parseInt(cleaned.slice(4, 6), 16)
+      return `${r}, ${g}, ${b}`
+    }
+    return null
+  }
+
+  const getBlinkColor = (item) => {
+    if (item.custom_color) {
+      const rgb = hexToRgb(item.custom_color)
+      if (rgb) return rgb
+    }
+    return categoryRGBs[item.type] || '79, 70, 229'
+  }
+
+  const handlePostponeItem = async (e, item) => {
+    e.stopPropagation()
+    const startMin = timeToMinutes(item.start_time)
+    const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 30
+    
+    const newStart = startMin + 30
+    const newEnd = endMin + 30
+    
+    const maxAllowed = HOUR_END * 60 // 22:00
+    let updatedDate = item.date
+    let finalStart = newStart
+    let finalEnd = newEnd
+
+    if (newStart >= maxAllowed) {
+      const d = new Date(item.date)
+      d.setDate(d.getDate() + 1)
+      updatedDate = formatLocalDate(d)
+      finalStart = 9 * 60 // 09:00
+      finalEnd = 9 * 60 + (endMin - startMin)
+    }
+
+    const updated = {
+      ...item,
+      date: updatedDate,
+      start_time: minutesToTime(finalStart),
+      end_time: minutesToTime(finalEnd)
+    }
+    
+    await onSave(updated)
+  }
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (popover && popoverRef.current && !popoverRef.current.contains(e.target)) {
@@ -102,9 +180,7 @@ export default function DayView({
   // Scroll to current time on mount
   useEffect(() => {
     if (!timelineRef.current) return
-    const now = new Date()
-    const nowMinutes = now.getHours() * 60 + now.getMinutes()
-    const topOffset = ((nowMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT - 80
+    const topOffset = ((currentMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT - 80
     if (topOffset > 0) {
       timelineRef.current.scrollTo({ top: Math.max(0, topOffset), behavior: 'smooth' })
     }
@@ -126,10 +202,8 @@ export default function DayView({
   const allDayItems = dayItems.filter(i => !i.start_time)
 
   // Current time indicator
-  const now = new Date()
-  const nowMinutes = now.getHours() * 60 + now.getMinutes()
-  const nowTop = ((nowMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT
-  const showNowLine = isToday && now.getHours() >= HOUR_START && now.getHours() <= HOUR_END
+  const nowTop = ((currentMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT
+  const showNowLine = isToday && (currentMinutes >= HOUR_START * 60) && (currentMinutes <= HOUR_END * 60)
 
   const handleDragStart = (e, item, actionType) => {
     if (e.button !== undefined && e.button !== 0) return
@@ -474,7 +548,7 @@ export default function DayView({
                   <div className="now-dot" />
                   <div className="now-line" />
                   <span className="now-label">
-                    {now.getHours().toString().padStart(2,'0')}:{now.getMinutes().toString().padStart(2,'0')}
+                    {String(Math.floor(currentMinutes / 60)).padStart(2, '0')}:{String(currentMinutes % 60).padStart(2, '0')}
                   </span>
                 </div>
               )}
@@ -503,10 +577,13 @@ export default function DayView({
 
                         const isDragging = tempItemUpdates && tempItemUpdates.id === item.id
 
+                        const startMin = timeToMinutes(item.start_time)
+                        const isBlinking = isToday && currentMinutes >= startMin && !isCompleted && item.status !== 'cancelled'
+
                         return (
                           <div
                             key={item.id}
-                            className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''} ${isDragging ? 'dragging' : ''}`}
+                            className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''} ${isDragging ? 'dragging' : ''} ${isBlinking ? 'arrived-blink' : ''}`}
                             style={{
                               top: top + 'px',
                               height: height + 'px',
@@ -515,6 +592,7 @@ export default function DayView({
                               backgroundColor: bg,
                               color: text,
                               borderLeft: `3px solid ${text}`,
+                              '--blink-color-rgb': getBlinkColor(item)
                             }}
                             onMouseDown={(e) => handleDragStart(e, item, 'drag')}
                             onTouchStart={(e) => handleDragStart(e, item, 'drag')}
@@ -523,10 +601,20 @@ export default function DayView({
                             <div className="day-event-header">
                               {getItemIcon(item.type, 12)}
                               <span className="day-event-title">{item.title}</span>
+                              {isBlinking && (
+                                <button
+                                  className="quick-postpone-btn"
+                                  style={{ marginLeft: item.type === 'call' ? 'auto' : '0.4rem', marginRight: item.type === 'call' ? '0' : '0.2rem', padding: '0', opacity: 0.8 }}
+                                  onClick={e => handlePostponeItem(e, item)}
+                                  title="Reporter de 30 min"
+                                >
+                                  <Clock size={12} />
+                                </button>
+                              )}
                               {item.type !== 'call' && (
                                 <button
                                   className="quick-complete-btn"
-                                  style={{ marginLeft: 'auto', padding: '0', opacity: 0.7 }}
+                                  style={{ marginLeft: isBlinking ? '0' : 'auto', padding: '0', opacity: 0.7 }}
                                   onClick={e => { e.stopPropagation(); onToggleComplete(item) }}
                                 >
                                   <CheckCircle2 size={13} fill={isCompleted ? 'currentColor' : 'none'} />
