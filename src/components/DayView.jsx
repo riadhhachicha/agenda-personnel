@@ -2,8 +2,20 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   ChevronLeft, ChevronRight,
   Calendar, CheckSquare, CalendarDays, Sparkles, Phone,
-  CheckCircle2, Plus, Clock, AlertCircle
+  CheckCircle2, Plus, Clock, AlertCircle,
+  ShoppingCart, Package, Users, FileText, Factory
 } from 'lucide-react'
+
+// Defined categories for the multi-column board view
+const CATEGORIES = [
+  { id: 'achats_divers',        label: 'Achats Divers',        icon: ShoppingCart },
+  { id: 'achats_mp',            label: 'Achats MP',            icon: Package },
+  { id: 'client',               label: 'Client',               icon: Users },
+  { id: 'rendezvous',           label: 'Rendez-vous',          icon: CalendarDays },
+  { id: 'tache_administrative', label: 'Admin',                icon: FileText },
+  { id: 'tache_usine',          label: 'Usine',                icon: Factory },
+  { id: 'call',                 label: 'Appel Tél.',           icon: Phone }
+]
 
 // Timeline range
 const HOUR_START = 5   // 05:00
@@ -33,11 +45,14 @@ const formatLocalDate = (date) => {
 
 const getItemIcon = (type, size = 14) => {
   switch (type) {
-    case 'task':        return <CheckSquare size={size} />
-    case 'appointment': return <CalendarDays size={size} />
-    case 'event':       return <Sparkles size={size} />
-    case 'call':        return <Phone size={size} />
-    default:            return <Calendar size={size} />
+    case 'achats_divers':        return <ShoppingCart size={size} />
+    case 'achats_mp':            return <Package size={size} />
+    case 'client':               return <Users size={size} />
+    case 'rendezvous':           return <CalendarDays size={size} />
+    case 'tache_administrative': return <FileText size={size} />
+    case 'tache_usine':          return <Factory size={size} />
+    case 'call':                 return <Phone size={size} />
+    default:                     return <Calendar size={size} />
   }
 }
 
@@ -112,6 +127,7 @@ export default function DayView({
 
     const handleMove = (moveEvent) => {
       const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY
+      const currentX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX
       const deltaY = currentY - dragSession.initialClientY
 
       if (Math.abs(deltaY) > 5) {
@@ -128,10 +144,23 @@ export default function DayView({
         newStart = Math.max(minAllowed, Math.min(maxAllowed, newStart))
         const newEnd = newStart + dragSession.initialDuration
 
+        // Horizontal column detection
+        let newType = dragSession.item.type
+        if (timelineRef.current) {
+          const rect = timelineRef.current.getBoundingClientRect()
+          const relativeX = currentX - rect.left - 60 // 60px time label spacer
+          const pct = relativeX / (rect.width - 60)
+          const colIdx = Math.floor(pct * CATEGORIES.length)
+          const clampedColIdx = Math.max(0, Math.min(CATEGORIES.length - 1, colIdx))
+          newType = CATEGORIES[clampedColIdx].id
+          hasMoved = true
+        }
+
         setTempItemUpdates({
           id: dragSession.itemId,
           start_time: minutesToTime(newStart),
-          end_time: minutesToTime(newEnd)
+          end_time: minutesToTime(newEnd),
+          type: newType
         })
       } else if (dragSession.actionType === 'resize') {
         const rawDuration = dragSession.initialDuration + deltaMin
@@ -144,7 +173,8 @@ export default function DayView({
         setTempItemUpdates({
           id: dragSession.itemId,
           start_time: minutesToTime(dragSession.initialStartMin),
-          end_time: minutesToTime(newEnd)
+          end_time: minutesToTime(newEnd),
+          type: dragSession.item.type
         })
       }
     }
@@ -160,7 +190,7 @@ export default function DayView({
       } else if (dragSession.itemId) {
         setTempItemUpdates(temp => {
           if (temp && temp.id === dragSession.itemId) {
-            onUpdateItemTime(dragSession.item, temp.start_time, temp.end_time)
+            onUpdateItemTime(dragSession.item, temp.start_time, temp.end_time, temp.type)
           }
           return null
         })
@@ -180,69 +210,79 @@ export default function DayView({
         return {
           ...item,
           start_time: tempItemUpdates.start_time,
-          end_time: tempItemUpdates.end_time
+          end_time: tempItemUpdates.end_time,
+          type: tempItemUpdates.type || item.type
         }
       }
       return item
     })
 
-    const sorted = [...mapped].sort((a, b) => 
-      timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
-    )
+    const results = []
 
-    const placed = sorted.map(item => {
-      const startMin = timeToMinutes(item.start_time)
-      const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 60
-      const top = Math.max(0, ((startMin - HOUR_START * 60) / 60) * HOUR_HEIGHT)
-      const height = Math.max(36, ((endMin - startMin) / 60) * HOUR_HEIGHT)
-      return { item, startMin, endMin, top, height, col: 0, totalCols: 1 }
+    // Run layout overlap solver for each category separately
+    CATEGORIES.forEach(cat => {
+      const catItems = mapped.filter(item => item.type === cat.id)
+      const sorted = [...catItems].sort((a, b) => 
+        timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
+      )
+
+      const placed = sorted.map(item => {
+        const startMin = timeToMinutes(item.start_time)
+        const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 60
+        const top = Math.max(0, ((startMin - HOUR_START * 60) / 60) * HOUR_HEIGHT)
+        const height = Math.max(36, ((endMin - startMin) / 60) * HOUR_HEIGHT)
+        return { item, startMin, endMin, top, height, col: 0, totalCols: 1 }
+      })
+
+      for (let i = 0; i < placed.length; i++) {
+        const cols = [0]
+        let maxCol = 0
+        for (let j = 0; j < i; j++) {
+          if (placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
+            cols.push(placed[j].col)
+            maxCol = Math.max(maxCol, placed[j].col)
+          }
+        }
+        let col = 0
+        while (cols.includes(col)) col++
+        placed[i].col = col
+        placed[i].totalCols = maxCol + 2
+      }
+
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = 0; j < placed.length; j++) {
+          if (i !== j && placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
+            const maxCols = Math.max(placed[i].totalCols, placed[j].totalCols)
+            placed[i].totalCols = maxCols
+            placed[j].totalCols = maxCols
+          }
+        }
+      }
+
+      results.push(...placed)
     })
 
-    // Simple column assignment for overlapping items
-    for (let i = 0; i < placed.length; i++) {
-      const cols = [0]
-      let maxCol = 0
-      for (let j = 0; j < i; j++) {
-        if (placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
-          cols.push(placed[j].col)
-          maxCol = Math.max(maxCol, placed[j].col)
-        }
-      }
-      let col = 0
-      while (cols.includes(col)) col++
-      placed[i].col = col
-      placed[i].totalCols = maxCol + 2
-    }
-
-    // Fix totalCols for all overlapping groups
-    for (let i = 0; i < placed.length; i++) {
-      for (let j = 0; j < placed.length; j++) {
-        if (i !== j && placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
-          const maxCols = Math.max(placed[i].totalCols, placed[j].totalCols)
-          placed[i].totalCols = maxCols
-          placed[j].totalCols = maxCols
-        }
-      }
-    }
-
-    return placed
+    return results
   }
 
   const layout = computeLayout(timedItems)
 
   const totalHeight = (HOUR_END - HOUR_START + 1) * HOUR_HEIGHT
 
-  // Type colors
+  // Type colors mapping the 7 categories
   const typeColors = {
-    task:        { bg: 'var(--color-task, #E0E7FF)',        text: 'var(--color-task-text, #3730a3)' },
-    appointment: { bg: 'var(--color-appointment, #D1FAE5)', text: 'var(--color-appointment-text, #065F46)' },
-    event:       { bg: 'var(--color-event, #FEF3C7)',       text: 'var(--color-event-text, #92400E)' },
-    call:        { bg: 'var(--color-call, #FFE4E6)',        text: 'var(--color-call-text, #9F1239)' },
+    achats_divers:        { bg: '#E0E7FF', text: '#3730A3' },
+    achats_mp:            { bg: '#D1FAE5', text: '#065F46' },
+    client:               { bg: '#FEF3C7', text: '#92400E' },
+    rendezvous:           { bg: '#FCE7F3', text: '#9D174D' },
+    tache_administrative: { bg: '#F3F4F6', text: '#374151' },
+    tache_usine:          { bg: '#CFFAFE', text: '#0891B2' },
+    call:                 { bg: '#FFE4E6', text: '#9F1239' }
   }
 
   const getColors = (item) => {
     if (item.custom_color) return { bg: item.custom_color, text: item.custom_color_text || '#000' }
-    return typeColors[item.type] || typeColors.event
+    return typeColors[item.type] || typeColors.rendezvous
   }
 
   return (
@@ -306,129 +346,164 @@ export default function DayView({
         </div>
       )}
 
-      {/* ── TIMELINE ── */}
-      <div className="day-view-timeline-wrap" ref={timelineRef}>
-        <div className="day-view-timeline" style={{ height: totalHeight + 'px' }}>
-
-          {/* Hour lines */}
-          {HOURS.map(h => (
-            <div
-              key={h}
-              className="day-view-hour-row"
-              style={{ top: ((h - HOUR_START) * HOUR_HEIGHT) + 'px', height: HOUR_HEIGHT + 'px' }}
-            >
-              <div className="day-view-hour-label">
-                {String(h).padStart(2, '0')}:00
-              </div>
-              <div className="day-view-hour-line" />
-            </div>
-          ))}
-
-          {/* Half-hour subtle lines */}
-          {HOURS.map(h => (
-            <div
-              key={`h-${h}`}
-              className="day-view-halfhour-line"
-              style={{ top: ((h - HOUR_START) * HOUR_HEIGHT + HOUR_HEIGHT / 2) + 'px' }}
-            />
-          ))}
-
-          {/* Current time line */}
-          {showNowLine && (
-            <div
-              className="day-view-now-line"
-              style={{ top: nowTop + 'px' }}
-            >
-              <div className="now-dot" />
-              <div className="now-line" />
-              <span className="now-label">
-                {now.getHours().toString().padStart(2,'0')}:{now.getMinutes().toString().padStart(2,'0')}
-              </span>
-            </div>
-          )}
-
-          {/* Event blocks */}
-          <div className="day-view-events-col">
-            {layout.map(({ item, top, height, col, totalCols }) => {
-              const { bg, text } = getColors(item)
-              const isCompleted = item.status === 'completed'
-              const colWidth = `calc((100% - 4px) / ${totalCols})`
-              const colLeft = `calc((100% - 4px) / ${totalCols} * ${col})`
-              const isShort = height < 48
-
-              const isDragging = tempItemUpdates && tempItemUpdates.id === item.id
-
+      {/* ── MULTI-COLUMN BOARD ── */}
+      <div className="day-view-board-outer">
+        <div className="day-view-board">
+          
+          {/* Header Row */}
+          <div className="day-view-board-header">
+            <div className="day-view-time-spacer" />
+            {CATEGORIES.map(cat => {
+              const Icon = cat.icon
               return (
-                <div
-                  key={item.id}
-                  className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''} ${isDragging ? 'dragging' : ''}`}
-                  style={{
-                    top: top + 'px',
-                    height: height + 'px',
-                    width: colWidth,
-                    left: colLeft,
-                    backgroundColor: bg,
-                    color: text,
-                    borderLeft: `3px solid ${text}`,
-                  }}
-                  onMouseDown={(e) => handleDragStart(e, item, 'drag')}
-                  onTouchStart={(e) => handleDragStart(e, item, 'drag')}
-                  title={`${item.start_time}${item.end_time ? ' – ' + item.end_time : ''} · ${item.title}`}
-                >
-                  <div className="day-event-header">
-                    {getItemIcon(item.type, 12)}
-                    <span className="day-event-title">{item.title}</span>
-                    {item.type === 'task' && (
-                      <button
-                        className="quick-complete-btn"
-                        style={{ marginLeft: 'auto', padding: '0', opacity: 0.7 }}
-                        onClick={e => { e.stopPropagation(); onToggleComplete(item) }}
-                      >
-                        <CheckCircle2 size={13} fill={isCompleted ? 'currentColor' : 'none'} />
-                      </button>
-                    )}
-                  </div>
-                  {!isShort && (
-                    <div className="day-event-time">
-                      <Clock size={10} />
-                      {item.start_time}{item.end_time ? ` – ${item.end_time}` : ''}
-                    </div>
-                  )}
-                  {!isShort && item.description && (
-                    <div className="day-event-desc">{item.description}</div>
-                  )}
-                  {!isShort && item.type === 'call' && item.contact_name && (
-                    <div className="day-event-desc">
-                      <Phone size={10} /> {item.contact_name}
-                    </div>
-                  )}
-                  {item.priority === 'urgent' && !isCompleted && (
-                    <div className="day-event-urgent"><AlertCircle size={10} /> Urgent</div>
-                  )}
-                  
-                  {/* Resize handle at the bottom */}
-                  <div
-                    className="day-event-resize-handle"
-                    onMouseDown={(e) => handleDragStart(e, item, 'resize')}
-                    onTouchStart={(e) => handleDragStart(e, item, 'resize')}
-                  />
+                <div key={cat.id} className="day-view-board-col-title">
+                  <Icon size={14} />
+                  <span>{cat.label}</span>
                 </div>
               )
             })}
           </div>
 
-          {/* Empty state */}
-          {dayItems.length === 0 && (
-            <div className="day-view-empty">
-              <Calendar size={36} strokeWidth={1.5} />
-              <span>Journée libre</span>
-              <button className="btn-primary" onClick={() => onAddItem(dateStr)}
-                style={{ marginTop: '0.75rem', padding: '0.5rem 1.25rem' }}>
-                <Plus size={15} /> Ajouter un élément
-              </button>
-            </div>
-          )}
+          {/* Timeline scrollable area */}
+          <div className="day-view-timeline-wrap" ref={timelineRef}>
+            <div className="day-view-timeline" style={{ height: totalHeight + 'px' }}>
 
+              {/* Hour lines */}
+              {HOURS.map(h => (
+                <div
+                  key={h}
+                  className="day-view-hour-row"
+                  style={{ top: ((h - HOUR_START) * HOUR_HEIGHT) + 'px', height: HOUR_HEIGHT + 'px' }}
+                >
+                  <div className="day-view-hour-label">
+                    {String(h).padStart(2, '0')}:00
+                  </div>
+                  <div className="day-view-hour-line" />
+                </div>
+              ))}
+
+              {/* Half-hour subtle lines */}
+              {HOURS.map(h => (
+                <div
+                  key={`h-${h}`}
+                  className="day-view-halfhour-line"
+                  style={{ top: ((h - HOUR_START) * HOUR_HEIGHT + HOUR_HEIGHT / 2) + 'px' }}
+                />
+              ))}
+
+              {/* Current time line */}
+              {showNowLine && (
+                <div
+                  className="day-view-now-line"
+                  style={{ top: nowTop + 'px' }}
+                >
+                  <div className="now-dot" />
+                  <div className="now-line" />
+                  <span className="now-label">
+                    {now.getHours().toString().padStart(2,'0')}:{now.getMinutes().toString().padStart(2,'0')}
+                  </span>
+                </div>
+              )}
+
+              {/* Columns container */}
+              <div className="day-view-columns-row">
+                {CATEGORIES.map((cat, catIdx) => {
+                  const catLayout = layout.filter(({ item }) => item.type === cat.id)
+                  
+                  return (
+                    <div
+                      key={cat.id}
+                      className="day-view-board-column"
+                      style={{
+                        left: `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${catIdx})`,
+                        width: `calc((100% - 60px) / ${CATEGORIES.length})`
+                      }}
+                    >
+                      {catLayout.map(({ item, top, height, col, totalCols }) => {
+                        const { bg, text } = getColors(item)
+                        const isCompleted = item.status === 'completed'
+                        const colWidth = `calc((100% - 4px) / ${totalCols})`
+                        const colLeft = `calc((100% - 4px) / ${totalCols} * ${col})`
+                        const isShort = height < 48
+
+                        const isDragging = tempItemUpdates && tempItemUpdates.id === item.id
+
+                        return (
+                          <div
+                            key={item.id}
+                            className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''} ${isDragging ? 'dragging' : ''}`}
+                            style={{
+                              top: top + 'px',
+                              height: height + 'px',
+                              width: colWidth,
+                              left: colLeft,
+                              backgroundColor: bg,
+                              color: text,
+                              borderLeft: `3px solid ${text}`,
+                            }}
+                            onMouseDown={(e) => handleDragStart(e, item, 'drag')}
+                            onTouchStart={(e) => handleDragStart(e, item, 'drag')}
+                            title={`${item.start_time}${item.end_time ? ' – ' + item.end_time : ''} · ${item.title}`}
+                          >
+                            <div className="day-event-header">
+                              {getItemIcon(item.type, 12)}
+                              <span className="day-event-title">{item.title}</span>
+                              {item.type !== 'call' && (
+                                <button
+                                  className="quick-complete-btn"
+                                  style={{ marginLeft: 'auto', padding: '0', opacity: 0.7 }}
+                                  onClick={e => { e.stopPropagation(); onToggleComplete(item) }}
+                                >
+                                  <CheckCircle2 size={13} fill={isCompleted ? 'currentColor' : 'none'} />
+                                </button>
+                              )}
+                            </div>
+                            {!isShort && (
+                              <div className="day-event-time">
+                                <Clock size={10} />
+                                {item.start_time}{item.end_time ? ` – ${item.end_time}` : ''}
+                              </div>
+                            )}
+                            {!isShort && item.description && (
+                              <div className="day-event-desc">{item.description}</div>
+                            )}
+                            {!isShort && item.type === 'call' && item.contact_name && (
+                              <div className="day-event-desc">
+                                <Phone size={10} /> {item.contact_name}
+                              </div>
+                            )}
+                            {item.priority === 'urgent' && !isCompleted && (
+                              <div className="day-event-urgent"><AlertCircle size={10} /> Urgent</div>
+                            )}
+                            
+                            {/* Resize handle at the bottom */}
+                            <div
+                              className="day-event-resize-handle"
+                              onMouseDown={(e) => handleDragStart(e, item, 'resize')}
+                              onTouchStart={(e) => handleDragStart(e, item, 'resize')}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Empty state */}
+              {dayItems.length === 0 && (
+                <div className="day-view-empty">
+                  <Calendar size={36} strokeWidth={1.5} />
+                  <span>Journée libre</span>
+                  <button className="btn-primary" onClick={() => onAddItem(dateStr)}
+                    style={{ marginTop: '0.75rem', padding: '0.5rem 1.25rem' }}>
+                    <Plus size={15} /> Ajouter un élément
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
         </div>
       </div>
     </div>

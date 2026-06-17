@@ -79,7 +79,15 @@ export default function App() {
 
   // Dashboard Filters & Date
   const [activeDate, setActiveDate] = useState(new Date())
-  const [filters, setFilters] = useState({ task: true, appointment: true, event: true, call: true })
+  const [filters, setFilters] = useState({
+    achats_divers: true,
+    achats_mp: true,
+    client: true,
+    rendezvous: true,
+    tache_administrative: true,
+    tache_usine: true,
+    call: true
+  })
   const [searchQuery, setSearchQuery] = useState('')
 
   // Modal control

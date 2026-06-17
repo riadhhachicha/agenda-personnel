@@ -11,7 +11,11 @@ import {
   Clock,
   User,
   AlertOctagon,
-  FileText
+  FileText,
+  ShoppingCart,
+  Package,
+  Users,
+  Factory
 } from 'lucide-react'
 import ContactAutocomplete from './ContactAutocomplete'
 
@@ -48,7 +52,7 @@ export default function ItemFormModal({
   const isEditing = !!item
 
   // State variables for form
-  const [type, setType] = useState('task')
+  const [type, setType] = useState('achats_divers')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [date, setDate] = useState('')
@@ -210,26 +214,41 @@ export default function ItemFormModal({
             {/* TYPE SELECTION RADIOS */}
             <div className="form-group">
               <label>Catégorie</label>
-              <div className="type-radio-group">
-                <label className={`type-radio-label ${type === 'task' ? 'selected' : ''}`} data-type="task">
-                  <input type="radio" name="type" value="task" checked={type === 'task'} onChange={() => setType('task')} />
-                  <CheckSquare size={16} />
-                  Tâche
+              <div className="type-radio-group" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
+                <label className={`type-radio-label ${type === 'achats_divers' ? 'selected' : ''}`} data-type="achats_divers">
+                  <input type="radio" name="type" value="achats_divers" checked={type === 'achats_divers'} onChange={() => setType('achats_divers')} />
+                  <ShoppingCart size={16} />
+                  Achats Divers
                 </label>
-                <label className={`type-radio-label ${type === 'appointment' ? 'selected' : ''}`} data-type="appointment">
-                  <input type="radio" name="type" value="appointment" checked={type === 'appointment'} onChange={() => setType('appointment')} />
+                <label className={`type-radio-label ${type === 'achats_mp' ? 'selected' : ''}`} data-type="achats_mp">
+                  <input type="radio" name="type" value="achats_mp" checked={type === 'achats_mp'} onChange={() => setType('achats_mp')} />
+                  <Package size={16} />
+                  Achats MP
+                </label>
+                <label className={`type-radio-label ${type === 'client' ? 'selected' : ''}`} data-type="client">
+                  <input type="radio" name="type" value="client" checked={type === 'client'} onChange={() => setType('client')} />
+                  <Users size={16} />
+                  Client
+                </label>
+                <label className={`type-radio-label ${type === 'rendezvous' ? 'selected' : ''}`} data-type="rendezvous">
+                  <input type="radio" name="type" value="rendezvous" checked={type === 'rendezvous'} onChange={() => setType('rendezvous')} />
                   <CalendarDays size={16} />
-                  RDV
+                  Rendez-vous
                 </label>
-                <label className={`type-radio-label ${type === 'event' ? 'selected' : ''}`} data-type="event">
-                  <input type="radio" name="type" value="event" checked={type === 'event'} onChange={() => setType('event')} />
-                  <Sparkles size={16} />
-                  Événement
+                <label className={`type-radio-label ${type === 'tache_administrative' ? 'selected' : ''}`} data-type="tache_administrative">
+                  <input type="radio" name="type" value="tache_administrative" checked={type === 'tache_administrative'} onChange={() => setType('tache_administrative')} />
+                  <FileText size={16} />
+                  Admin
+                </label>
+                <label className={`type-radio-label ${type === 'tache_usine' ? 'selected' : ''}`} data-type="tache_usine">
+                  <input type="radio" name="type" value="tache_usine" checked={type === 'tache_usine'} onChange={() => setType('tache_usine')} />
+                  <Factory size={16} />
+                  Usine
                 </label>
                 <label className={`type-radio-label ${type === 'call' ? 'selected' : ''}`} data-type="call">
                   <input type="radio" name="type" value="call" checked={type === 'call'} onChange={() => setType('call')} />
                   <Phone size={16} />
-                  Appel
+                  Appel Tél.
                 </label>
               </div>
             </div>

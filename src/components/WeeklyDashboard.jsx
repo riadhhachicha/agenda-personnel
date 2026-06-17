@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Search, 
+  ChevronLeft,
+  ChevronRight,
+  Search,
   Calendar, 
   CheckSquare, 
   CalendarDays, 
@@ -11,7 +11,12 @@ import {
   Plus, 
   AlertTriangle,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  ShoppingCart,
+  Package,
+  Users,
+  FileText,
+  Factory
 } from 'lucide-react'
 import CardColorPicker from './CardColorPicker'
 import { saveItem, getItems } from '../db/db'
@@ -172,11 +177,14 @@ export default function WeeklyDashboard({
   // ─── Icons ─────────────────────────────────────────────────────────────────
   const getItemIcon = (type) => {
     switch (type) {
-      case 'task':        return <CheckSquare className="card-icon" size={16} />
-      case 'appointment': return <CalendarDays className="card-icon" size={16} />
-      case 'event':       return <Sparkles className="card-icon" size={16} />
-      case 'call':        return <Phone className="card-icon" size={16} />
-      default:            return <Calendar className="card-icon" size={16} />
+      case 'achats_divers':        return <ShoppingCart className="card-icon" size={16} />
+      case 'achats_mp':            return <Package className="card-icon" size={16} />
+      case 'client':               return <Users className="card-icon" size={16} />
+      case 'rendezvous':           return <CalendarDays className="card-icon" size={16} />
+      case 'tache_administrative': return <FileText className="card-icon" size={16} />
+      case 'tache_usine':          return <Factory className="card-icon" size={16} />
+      case 'call':                 return <Phone className="card-icon" size={16} />
+      default:                     return <Calendar className="card-icon" size={16} />
     }
   }
 
@@ -343,17 +351,26 @@ export default function WeeklyDashboard({
 
         {/* Filters */}
         <div className="filters-container">
-          <button className={`filter-chip ${filters.task ? 'active' : ''}`} onClick={() => toggleFilter('task')} data-type="task">
-            <CheckSquare size={14} /> Tâches
+          <button className={`filter-chip ${filters.achats_divers ? 'active' : ''}`} onClick={() => toggleFilter('achats_divers')} data-type="achats_divers">
+            <ShoppingCart size={14} /> Achats Divers
           </button>
-          <button className={`filter-chip ${filters.appointment ? 'active' : ''}`} onClick={() => toggleFilter('appointment')} data-type="appointment">
-            <CalendarDays size={14} /> RDV
+          <button className={`filter-chip ${filters.achats_mp ? 'active' : ''}`} onClick={() => toggleFilter('achats_mp')} data-type="achats_mp">
+            <Package size={14} /> Achats MP
           </button>
-          <button className={`filter-chip ${filters.event ? 'active' : ''}`} onClick={() => toggleFilter('event')} data-type="event">
-            <Sparkles size={14} /> Événements
+          <button className={`filter-chip ${filters.client ? 'active' : ''}`} onClick={() => toggleFilter('client')} data-type="client">
+            <Users size={14} /> Client
+          </button>
+          <button className={`filter-chip ${filters.rendezvous ? 'active' : ''}`} onClick={() => toggleFilter('rendezvous')} data-type="rendezvous">
+            <CalendarDays size={14} /> Rendez-vous
+          </button>
+          <button className={`filter-chip ${filters.tache_administrative ? 'active' : ''}`} onClick={() => toggleFilter('tache_administrative')} data-type="tache_administrative">
+            <FileText size={14} /> Admin
+          </button>
+          <button className={`filter-chip ${filters.tache_usine ? 'active' : ''}`} onClick={() => toggleFilter('tache_usine')} data-type="tache_usine">
+            <Factory size={14} /> Usine
           </button>
           <button className={`filter-chip ${filters.call ? 'active' : ''}`} onClick={() => toggleFilter('call')} data-type="call">
-            <Phone size={14} /> Appels
+            <Phone size={14} /> Appel
           </button>
         </div>
 
