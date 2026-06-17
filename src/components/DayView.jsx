@@ -21,9 +21,6 @@ const CATEGORIES = [
 // Timeline range
 const HOUR_START = 5   // 05:00
 const HOUR_END   = 22  // 22:00
-const HOUR_HEIGHT = 72 // px per hour
-
-const HOURS = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i)
 
 const timeToMinutes = (timeStr) => {
   if (!timeStr) return null
@@ -177,14 +174,7 @@ export default function DayView({
     setPopover(null)
   }
 
-  // Scroll to current time on mount
-  useEffect(() => {
-    if (!timelineRef.current) return
-    const topOffset = ((currentMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT - 80
-    if (topOffset > 0) {
-      timelineRef.current.scrollTo({ top: Math.max(0, topOffset), behavior: 'smooth' })
-    }
-  }, [dateStr])
+
 
   const navigate = (dir) => {
     const d = new Date(activeDate)
@@ -201,131 +191,43 @@ export default function DayView({
   const timedItems = dayItems.filter(i => i.start_time)
   const allDayItems = dayItems.filter(i => !i.start_time)
 
-  // Current time indicator
-  const nowTop = ((currentMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT
-  const showNowLine = isToday && (currentMinutes >= HOUR_START * 60) && (currentMinutes <= HOUR_END * 60)
-
-  const handleDragStart = (e, item, actionType) => {
+  const handleDragStartCard = (e, item) => {
     if (e.button !== undefined && e.button !== 0) return
-    
     e.stopPropagation()
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY
-    const startMin = timeToMinutes(item.start_time)
-    const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 30
-    const duration = endMin - startMin
-
-    let hasMoved = false
-
-    const dragSession = {
-      itemId: item.id,
-      actionType,
-      initialClientY: clientY,
-      initialStartMin: startMin,
-      initialEndMin: endMin,
-      initialDuration: duration,
-      item
-    }
-
-    const handleMove = (moveEvent) => {
-      const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY
-      const currentX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX
-      const deltaY = currentY - dragSession.initialClientY
-
-      if (Math.abs(deltaY) > 5) {
-        hasMoved = true
-      }
-
-      const deltaMin = (deltaY / HOUR_HEIGHT) * 60
-
-      if (dragSession.actionType === 'drag') {
-        const rawStart = dragSession.initialStartMin + deltaMin
-        let newStart = Math.round(rawStart / 15) * 15
-        const minAllowed = HOUR_START * 60
-        const maxAllowed = HOUR_END * 60 - dragSession.initialDuration
-        newStart = Math.max(minAllowed, Math.min(maxAllowed, newStart))
-        const newEnd = newStart + dragSession.initialDuration
-
-        // Horizontal column detection
-        let newType = dragSession.item.type
-        if (timelineRef.current) {
-          const rect = timelineRef.current.getBoundingClientRect()
-          const relativeX = currentX - rect.left - 60 // 60px time label spacer
-          const pct = relativeX / (rect.width - 60)
-          const colIdx = Math.floor(pct * CATEGORIES.length)
-          const clampedColIdx = Math.max(0, Math.min(CATEGORIES.length - 1, colIdx))
-          newType = CATEGORIES[clampedColIdx].id
-          hasMoved = true
-        }
-
-        setTempItemUpdates({
-          id: dragSession.itemId,
-          start_time: minutesToTime(newStart),
-          end_time: minutesToTime(newEnd),
-          type: newType
-        })
-      } else if (dragSession.actionType === 'resize') {
-        const rawDuration = dragSession.initialDuration + deltaMin
-        let newDuration = Math.round(rawDuration / 15) * 15
-        newDuration = Math.max(30, newDuration)
-        const maxDuration = HOUR_END * 60 - dragSession.initialStartMin
-        newDuration = Math.min(maxDuration, newDuration)
-        const newEnd = dragSession.initialStartMin + newDuration
-
-        setTempItemUpdates({
-          id: dragSession.itemId,
-          start_time: minutesToTime(dragSession.initialStartMin),
-          end_time: minutesToTime(newEnd),
-          type: dragSession.item.type
-        })
-      }
-    }
-
-    const handleEnd = async () => {
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleEnd)
-      window.removeEventListener('touchmove', handleMove)
-      window.removeEventListener('touchend', handleEnd)
-
-      if (!hasMoved) {
-        const layoutItem = layout.find(l => l.item.id === item.id)
-        const top = layoutItem ? layoutItem.top : 0
-        const catIdx = CATEGORIES.findIndex(cat => cat.id === item.type)
-        
-        setPopover({
-          isNew: false,
-          top,
-          catIdx,
-          catId: item.type,
-          item: { ...item }
-        })
-      } else if (dragSession.itemId) {
-        setTempItemUpdates(temp => {
-          if (temp && temp.id === dragSession.itemId) {
-            onUpdateItemTime(dragSession.item, temp.start_time, temp.end_time, temp.type)
-          }
-          return null
-        })
-      }
-    }
-
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleEnd)
-    window.addEventListener('touchmove', handleMove, { passive: false })
-    window.addEventListener('touchend', handleEnd)
+    e.dataTransfer.setData('text/plain', item.id)
+    e.dataTransfer.effectAllowed = 'move'
   }
 
-  const handleColumnClick = (e, categoryId) => {
-    if (e.target !== e.currentTarget) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const relativeY = e.clientY - rect.top
-    const minutesFromStart = (relativeY / HOUR_HEIGHT) * 60
-    const clickedMinutes = HOUR_START * 60 + minutesFromStart
-    const snappedMinutes = Math.round(clickedMinutes / 30) * 30
-    const clampedMinutes = Math.max(HOUR_START * 60, Math.min(HOUR_END * 60, snappedMinutes))
-    const timeStr = minutesToTime(clampedMinutes)
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
 
-    const top = Math.max(0, ((clampedMinutes - HOUR_START * 60) / 60) * HOUR_HEIGHT)
-    const catIdx = CATEGORIES.findIndex(cat => cat.id === categoryId)
+  const handleDrop = async (e, targetCategoryId) => {
+    e.preventDefault()
+    const itemId = e.dataTransfer.getData('text/plain')
+    if (!itemId) return
+
+    const item = items.find(i => i.id === itemId)
+    if (item && item.type !== targetCategoryId) {
+      const updated = {
+        ...item,
+        type: targetCategoryId
+      }
+      await onSave(updated)
+    }
+  }
+
+  const handleColumnClick = (e, categoryId, catIdx) => {
+    if (e.target !== e.currentTarget) return
+    const boardRect = timelineRef.current.getBoundingClientRect()
+    const clickY = e.clientY - boardRect.top
+    const top = Math.max(10, clickY - 20)
+
+    const now = new Date()
+    const startHour = String(now.getHours()).padStart(2, '0')
+    const startMin = String(Math.round(now.getMinutes() / 15) * 15 % 60).padStart(2, '0')
+    const timeStr = `${startHour}:${startMin}`
 
     const [h, m] = timeStr.split(':').map(Number)
     const endM = (m + 30) % 60
@@ -354,68 +256,20 @@ export default function DayView({
     })
   }
 
-  // Compute item layout (top, height, column for overlapping)
-  const computeLayout = (items) => {
-    const mapped = items.map(item => {
-      if (tempItemUpdates && tempItemUpdates.id === item.id) {
-        return {
-          ...item,
-          start_time: tempItemUpdates.start_time,
-          end_time: tempItemUpdates.end_time,
-          type: tempItemUpdates.type || item.type
-        }
-      }
-      return item
+  const handleCardClick = (e, item, catIdx) => {
+    e.stopPropagation()
+    const boardRect = timelineRef.current.getBoundingClientRect()
+    const cardRect = e.currentTarget.getBoundingClientRect()
+    const top = cardRect.top - boardRect.top
+
+    setPopover({
+      isNew: false,
+      top,
+      catIdx,
+      catId: item.type,
+      item: { ...item }
     })
-
-    const results = []
-
-    // Run layout overlap solver for each category separately
-    CATEGORIES.forEach(cat => {
-      const catItems = mapped.filter(item => item.type === cat.id)
-      const sorted = [...catItems].sort((a, b) => 
-        timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
-      )
-
-      const placed = sorted.map(item => {
-        const startMin = timeToMinutes(item.start_time)
-        const endMin = item.end_time ? timeToMinutes(item.end_time) : startMin + 30
-        const top = Math.max(0, ((startMin - HOUR_START * 60) / 60) * HOUR_HEIGHT)
-        const height = Math.max(36, ((endMin - startMin) / 60) * HOUR_HEIGHT)
-        return { item, startMin, endMin, top, height, col: 0, totalCols: 1 }
-      })
-
-      for (let i = 0; i < placed.length; i++) {
-        const overlappingCols = []
-        for (let j = 0; j < i; j++) {
-          if (placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
-            overlappingCols.push(placed[j].col)
-          }
-        }
-        let col = 0
-        while (overlappingCols.includes(col)) col++
-        placed[i].col = col
-      }
-
-      for (let i = 0; i < placed.length; i++) {
-        let maxColInGroup = placed[i].col
-        for (let j = 0; j < placed.length; j++) {
-          if (placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
-            maxColInGroup = Math.max(maxColInGroup, placed[j].col)
-          }
-        }
-        placed[i].totalCols = maxColInGroup + 1
-      }
-
-      results.push(...placed)
-    })
-
-    return results
   }
-
-  const layout = computeLayout(timedItems)
-
-  const totalHeight = (HOUR_END - HOUR_START + 1) * HOUR_HEIGHT
 
   // Type colors mapping the 7 categories
   const typeColors = {
@@ -512,172 +366,115 @@ export default function DayView({
             })}
           </div>
 
-          {/* Timeline scrollable area */}
-          <div className="day-view-timeline-wrap" ref={timelineRef}>
-            <div className="day-view-timeline" style={{ height: totalHeight + 'px' }}>
+          {/* Board columns container (replaces timeline scrollable area) */}
+          <div className="day-view-board-columns" ref={timelineRef} style={{ position: 'relative' }}>
+            {CATEGORIES.map((cat, catIdx) => {
+              const catItems = timedItems.filter(item => item.type === cat.id)
+              const sortedItems = [...catItems].sort((a, b) => {
+                const aMin = timeToMinutes(a.start_time) || 0
+                const bMin = timeToMinutes(b.start_time) || 0
+                return aMin - bMin
+              })
 
-              {/* Hour lines */}
-              {HOURS.map(h => (
+              return (
                 <div
-                  key={h}
-                  className="day-view-hour-row"
-                  style={{ top: ((h - HOUR_START) * HOUR_HEIGHT) + 'px', height: HOUR_HEIGHT + 'px' }}
+                  key={cat.id}
+                  className="day-view-column-list"
+                  onClick={(e) => handleColumnClick(e, cat.id, catIdx)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, cat.id)}
                 >
-                  <div className="day-view-hour-label">
-                    {String(h).padStart(2, '0')}:00
-                  </div>
-                  <div className="day-view-hour-line" />
-                </div>
-              ))}
+                  {sortedItems.map(item => {
+                    const { bg, text } = getColors(item)
+                    const isCompleted = item.status === 'completed'
+                    const startMin = timeToMinutes(item.start_time)
+                    const isBlinking = isToday && currentMinutes >= startMin && !isCompleted && item.status !== 'cancelled'
 
-              {/* Half-hour subtle lines */}
-              {HOURS.map(h => (
-                <div
-                  key={`h-${h}`}
-                  className="day-view-halfhour-line"
-                  style={{ top: ((h - HOUR_START) * HOUR_HEIGHT + HOUR_HEIGHT / 2) + 'px' }}
-                />
-              ))}
-
-              {/* Current time line */}
-              {showNowLine && (
-                <div
-                  className="day-view-now-line"
-                  style={{ top: nowTop + 'px' }}
-                >
-                  <div className="now-dot" />
-                  <div className="now-line" />
-                  <span className="now-label">
-                    {String(Math.floor(currentMinutes / 60)).padStart(2, '0')}:{String(currentMinutes % 60).padStart(2, '0')}
-                  </span>
-                </div>
-              )}
-
-              {/* Columns container */}
-              <div className="day-view-columns-row">
-                {CATEGORIES.map((cat, catIdx) => {
-                  const catLayout = layout.filter(({ item }) => item.type === cat.id)
-                  
-                  return (
-                    <div
-                      key={cat.id}
-                      className="day-view-board-column"
-                      style={{
-                        left: `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${catIdx})`,
-                        width: `calc((100% - 60px) / ${CATEGORIES.length})`
-                      }}
-                      onClick={(e) => handleColumnClick(e, cat.id)}
-                    >
-                      {catLayout.map(({ item, top, height, col, totalCols }) => {
-                        const { bg, text } = getColors(item)
-                        const isCompleted = item.status === 'completed'
-                        const colWidth = `calc(100% / ${totalCols})`
-                        const colLeft = `calc(100% / ${totalCols} * ${col})`
-                        const isShort = height < 48
-
-                        const isDragging = tempItemUpdates && tempItemUpdates.id === item.id
-
-                        const startMin = timeToMinutes(item.start_time)
-                        const isBlinking = isToday && currentMinutes >= startMin && !isCompleted && item.status !== 'cancelled'
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={`day-event-block ${isCompleted ? 'completed' : ''} ${isShort ? 'short' : ''} ${isDragging ? 'dragging' : ''} ${isBlinking ? 'arrived-blink' : ''}`}
-                            style={{
-                              top: top + 'px',
-                              height: height + 'px',
-                              width: colWidth,
-                              left: colLeft,
-                              backgroundColor: bg,
-                              color: text,
-                              borderLeft: `3px solid ${text}`,
-                              '--blink-color-rgb': getBlinkColor(item)
-                            }}
-                            onMouseDown={(e) => handleDragStart(e, item, 'drag')}
-                            onTouchStart={(e) => handleDragStart(e, item, 'drag')}
-                            title={`${item.start_time}${item.end_time ? ' – ' + item.end_time : ''} · ${item.title}`}
-                          >
-                            <div className="day-event-header">
-                              {getItemIcon(item.type, 12)}
-                              <span className="day-event-title">{item.title}</span>
-                              {isBlinking && (
-                                <button
-                                  className="quick-postpone-btn"
-                                  style={{ marginLeft: item.type === 'call' ? 'auto' : '0.4rem', marginRight: item.type === 'call' ? '0' : '0.2rem', padding: '0', opacity: 0.8 }}
-                                  onClick={e => handlePostponeItem(e, item)}
-                                  title="Reporter de 30 min"
-                                >
-                                  <Clock size={12} />
-                                </button>
-                              )}
-                              {item.type !== 'call' && (
-                                <button
-                                  className="quick-complete-btn"
-                                  style={{ marginLeft: isBlinking ? '0' : 'auto', padding: '0', opacity: 0.7 }}
-                                  onClick={e => { e.stopPropagation(); onToggleComplete(item) }}
-                                >
-                                  <CheckCircle2 size={13} fill={isCompleted ? 'currentColor' : 'none'} />
-                                </button>
-                              )}
-                            </div>
-                            {!isShort && (
-                              <div className="day-event-time">
-                                <Clock size={10} />
-                                {item.start_time}{item.end_time ? ` – ${item.end_time}` : ''}
-                              </div>
-                            )}
-                            {!isShort && item.description && (
-                              <div className="day-event-desc">{item.description}</div>
-                            )}
-                            {!isShort && item.type === 'call' && item.contact_name && (
-                              <div className="day-event-desc">
-                                <Phone size={10} /> {item.contact_name}
-                              </div>
-                            )}
-                            {item.priority === 'urgent' && !isCompleted && (
-                              <div className="day-event-urgent"><AlertCircle size={10} /> Urgent</div>
-                            )}
-                            
-                            {/* Resize handle at the bottom */}
-                            <div
-                              className="day-event-resize-handle"
-                              onMouseDown={(e) => handleDragStart(e, item, 'resize')}
-                              onTouchStart={(e) => handleDragStart(e, item, 'resize')}
-                            />
+                    return (
+                      <div
+                        key={item.id}
+                        className={`day-event-block ${isCompleted ? 'completed' : ''} ${isBlinking ? 'arrived-blink' : ''}`}
+                        style={{
+                          backgroundColor: bg,
+                          color: text,
+                          borderLeft: `3px solid ${text}`,
+                          '--blink-color-rgb': getBlinkColor(item)
+                        }}
+                        draggable
+                        onDragStart={(e) => handleDragStartCard(e, item)}
+                        onClick={(e) => handleCardClick(e, item, catIdx)}
+                        title={`${item.start_time}${item.end_time ? ' – ' + item.end_time : ''} · ${item.title}`}
+                      >
+                        <div className="day-event-header">
+                          {getItemIcon(item.type, 12)}
+                          <span className="day-event-title">{item.title}</span>
+                          {isBlinking && (
+                            <button
+                              className="quick-postpone-btn"
+                              style={{ marginLeft: item.type === 'call' ? 'auto' : '0.4rem', marginRight: item.type === 'call' ? '0' : '0.2rem', padding: '0', opacity: 0.8 }}
+                              onClick={e => handlePostponeItem(e, item)}
+                              title="Reporter de 30 min"
+                            >
+                              <Clock size={12} />
+                            </button>
+                          )}
+                          {item.type !== 'call' && (
+                            <button
+                              className="quick-complete-btn"
+                              style={{ marginLeft: isBlinking ? '0' : 'auto', padding: '0', opacity: 0.7 }}
+                              onClick={e => { e.stopPropagation(); onToggleComplete(item) }}
+                            >
+                              <CheckCircle2 size={13} fill={isCompleted ? 'currentColor' : 'none'} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="day-event-time">
+                          <Clock size={10} />
+                          {item.start_time}{item.end_time ? ` – ${item.end_time}` : ''}
+                        </div>
+                        {item.description && (
+                          <div className="day-event-desc">{item.description}</div>
+                        )}
+                        {item.type === 'call' && item.contact_name && (
+                          <div className="day-event-desc">
+                            <Phone size={10} /> {item.contact_name}
                           </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Empty state */}
-              {dayItems.length === 0 && (
-                <div className="day-view-empty">
-                  <Calendar size={36} strokeWidth={1.5} />
-                  <span>Journée libre</span>
-                  <button className="btn-primary" onClick={() => onAddItem(dateStr)}
-                    style={{ marginTop: '0.75rem', padding: '0.5rem 1.25rem' }}>
-                    <Plus size={15} /> Ajouter un élément
-                  </button>
+                        )}
+                        {item.priority === 'urgent' && !isCompleted && (
+                          <div className="day-event-urgent"><AlertCircle size={10} /> Urgent</div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-              )}
+              )
+            })}
 
-              {/* Popover Editor - La cellule saisie au même niveau mais plus large */}
-              {popover && (
-                <div
-                  ref={popoverRef}
-                  className="day-view-popover-editor"
-                  style={{
-                    top: `${Math.max(0, Math.min(popover.top, totalHeight - (popover.item.type === 'call' ? 420 : 360) - 10))}px`,
-                    left: popover.catIdx < 4 
-                      ? `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${popover.catIdx})`
-                      : `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${popover.catIdx + 1} - 340px)`,
-                    '--category-color': (getColors(popover.item).bg)
-                  }}
-                >
+            {/* Empty state when there are no timed items on this day */}
+            {timedItems.length === 0 && (
+              <div className="day-view-empty">
+                <Calendar size={36} strokeWidth={1.5} />
+                <span>Journée libre</span>
+                <button className="btn-primary" onClick={() => onAddItem(dateStr)}
+                  style={{ marginTop: '0.75rem', padding: '0.5rem 1.25rem' }}>
+                  <Plus size={15} /> Ajouter un élément
+                </button>
+              </div>
+            )}
+
+            {/* Popover Editor - La cellule saisie au même niveau mais plus large */}
+            {popover && (
+              <div
+                ref={popoverRef}
+                className="day-view-popover-editor"
+                style={{
+                  top: `${Math.max(10, popover.top)}px`,
+                  left: popover.catIdx < 4 
+                    ? `calc(100% / ${CATEGORIES.length} * ${popover.catIdx})`
+                    : `calc(100% / ${CATEGORIES.length} * ${popover.catIdx + 1} - 340px)`,
+                  '--category-color': (getColors(popover.item).bg)
+                }}
+              >
                   {/* Category switcher row */}
                   <div className="popover-category-row">
                     {CATEGORIES.map(cat => {
@@ -903,6 +700,5 @@ export default function DayView({
           </div>
         </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
