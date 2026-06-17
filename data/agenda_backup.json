@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "exported_at": "2026-06-17T21:47:33.421Z",
+  "exported_at": "2026-06-17T21:54:42.019Z",
   "exported_by": "Mon Agenda Personnel",
   "count": 12,
   "items": [
@@ -8,7 +8,7 @@
       "type": "call",
       "title": "PV MASMOUDI",
       "description": "",
-      "date": "2026-06-18",
+      "date": "2026-06-16",
       "start_time": "09:00",
       "end_time": "23:00",
       "priority": "normal",
@@ -21,7 +21,7 @@
       "google_calendar_id": "",
       "google_calendar_link": "",
       "id": "a50a227e-f1c4-46ee-82b5-b82b7e4a941b",
-      "updated_at": "2026-06-17T21:16:34.082Z",
+      "updated_at": "2026-06-17T21:54:41.417Z",
       "created_at": "2026-06-16T20:44:57.759Z"
     },
     {
@@ -226,8 +226,8 @@
       "title": "SFGNFNFGN",
       "description": "GFN?FH?NFGHN?FH?HF?HF?HGFFGNGFNGFNGNGFNFNFDNFN",
       "date": "2026-06-17",
-      "start_time": "05:30",
-      "end_time": "06:00",
+      "start_time": "05:00",
+      "end_time": "05:30",
       "priority": "low",
       "status": "in_progress",
       "reminder_active": false,
@@ -235,7 +235,7 @@
       "phone_number": "",
       "notes": "",
       "id": "84547a9b-e7b2-4675-847a-e66f1b3a0068",
-      "updated_at": "2026-06-17T21:47:33.015Z",
+      "updated_at": "2026-06-17T21:47:48.617Z",
       "created_at": "2026-06-17T21:47:33.015Z"
     }
   ]
