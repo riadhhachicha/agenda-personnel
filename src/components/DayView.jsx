@@ -247,28 +247,25 @@ export default function DayView({
       })
 
       for (let i = 0; i < placed.length; i++) {
-        const cols = [0]
-        let maxCol = 0
+        const overlappingCols = []
         for (let j = 0; j < i; j++) {
           if (placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
-            cols.push(placed[j].col)
-            maxCol = Math.max(maxCol, placed[j].col)
+            overlappingCols.push(placed[j].col)
           }
         }
         let col = 0
-        while (cols.includes(col)) col++
+        while (overlappingCols.includes(col)) col++
         placed[i].col = col
-        placed[i].totalCols = maxCol + 2
       }
 
       for (let i = 0; i < placed.length; i++) {
+        let maxColInGroup = placed[i].col
         for (let j = 0; j < placed.length; j++) {
-          if (i !== j && placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
-            const maxCols = Math.max(placed[i].totalCols, placed[j].totalCols)
-            placed[i].totalCols = maxCols
-            placed[j].totalCols = maxCols
+          if (placed[j].endMin > placed[i].startMin && placed[j].startMin < placed[i].endMin) {
+            maxColInGroup = Math.max(maxColInGroup, placed[j].col)
           }
         }
+        placed[i].totalCols = maxColInGroup + 1
       }
 
       results.push(...placed)
