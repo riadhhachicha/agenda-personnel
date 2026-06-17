@@ -404,10 +404,18 @@ export default function App() {
     }
   }
 
-  // Open modal to add item (optionally for a specific date)
-  const openAddModal = (dayDate) => {
+  // Open modal to add item (optionally with pre-filled fields)
+  const openAddModal = (dayDate, defaultType, defaultStartTime) => {
     setDefaultModalDate(dayDate || '')
-    setEditingItem(null)
+    if (defaultType || defaultStartTime) {
+      setEditingItem({
+        type: defaultType || 'achats_divers',
+        start_time: defaultStartTime || '09:00',
+        date: dayDate || ''
+      })
+    } else {
+      setEditingItem(null)
+    }
     setShowFormModal(true)
   }
 

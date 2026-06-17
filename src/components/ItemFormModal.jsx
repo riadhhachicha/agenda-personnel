@@ -49,7 +49,7 @@ export default function ItemFormModal({
   defaultDate,
   googleConnected
 }) {
-  const isEditing = !!item
+  const isEditing = !!(item && item.id)
 
   // State variables for form
   const [type, setType] = useState('achats_divers')
@@ -68,13 +68,13 @@ export default function ItemFormModal({
   const [googleCalendarId, setGoogleCalendarId] = useState('')
   const [googleCalendarLink, setGoogleCalendarLink] = useState('')
 
-  // Initialize form with item data if editing
+  // Initialize form with item data if present
   useEffect(() => {
-    if (isEditing) {
-      setType(item.type || 'task')
+    if (item) {
+      setType(item.type || 'achats_divers')
       setTitle(item.title || '')
       setDescription(item.description || '')
-      setDate(item.date || '')
+      setDate(item.date || defaultDate || '')
       setStartTime(item.start_time || '09:00')
       setEndTime(item.end_time || '')
       setPriority(item.priority || 'normal')
@@ -106,7 +106,7 @@ export default function ItemFormModal({
       }
     } else {
       // Set defaults for new item
-      setType('task')
+      setType('achats_divers')
       setTitle('')
       setDescription('')
       const today = new Date()
@@ -131,7 +131,7 @@ export default function ItemFormModal({
       setGoogleCalendarId('')
       setGoogleCalendarLink('')
     }
-  }, [item, defaultDate, isEditing])
+  }, [item, defaultDate])
 
   const handleSubmit = (e) => {
     e.preventDefault()

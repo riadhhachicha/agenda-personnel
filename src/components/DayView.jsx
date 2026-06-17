@@ -203,6 +203,18 @@ export default function DayView({
     window.addEventListener('touchend', handleEnd)
   }
 
+  const handleColumnClick = (e, categoryId) => {
+    if (e.target !== e.currentTarget) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const relativeY = e.clientY - rect.top
+    const minutesFromStart = (relativeY / HOUR_HEIGHT) * 60
+    const clickedMinutes = HOUR_START * 60 + minutesFromStart
+    const snappedMinutes = Math.round(clickedMinutes / 30) * 30
+    const clampedMinutes = Math.max(HOUR_START * 60, Math.min(HOUR_END * 60, snappedMinutes))
+    const timeStr = minutesToTime(clampedMinutes)
+    onAddItem(dateStr, categoryId, timeStr)
+  }
+
   // Compute item layout (top, height, column for overlapping)
   const computeLayout = (items) => {
     const mapped = items.map(item => {
@@ -418,6 +430,7 @@ export default function DayView({
                         left: `calc(60px + (100% - 60px) / ${CATEGORIES.length} * ${catIdx})`,
                         width: `calc((100% - 60px) / ${CATEGORIES.length})`
                       }}
+                      onClick={(e) => handleColumnClick(e, cat.id)}
                     >
                       {catLayout.map(({ item, top, height, col, totalCols }) => {
                         const { bg, text } = getColors(item)
